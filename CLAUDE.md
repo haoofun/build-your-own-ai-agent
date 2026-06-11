@@ -53,7 +53,7 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 
 - [x] 定位、差异化调研、大纲 v0.1（见 OUTLINE.md，16 章 + 3 附录）
 - [x] 大纲评审（2026-06-10：差异化表新增 Windy 行、7 章补齐里程碑、定位改为深度优势）
-- [ ] spike 周（2026-06-10 起，见"协作工作流"）
+- [ ] spike 周（实际 D1 = 2026-06-11，较原计划顺延一天；坑清单见 SPIKE-NOTES.md）
 - [x] 发布管线（2026-06-11 搭好并沙盒验证：VitePress（srcDir=book、规划目录自动隐藏未写章节）+ interactive 容器 + llms.txt/llms-full.txt + pandoc epub 冒烟 + CI；写作约定见 WRITING.md；2026-06-11 全线上线：Cloudflare Pages 部署生效，build-your-own-ai-agent.com 主域 + www 均可访问，llms.txt 线上验证通过）
 - [x] 域名购买 + 文件夹更名 + GitHub 仓库（public）：github.com/haoofun/build-your-own-ai-agent，LICENSE = MIT + 正文 CC BY-NC-SA（2026-06-11 完成）
 - [ ] M1：第 0–5 章（发布管线已在 spike 周并行搭好）
@@ -69,7 +69,7 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 
 **工程操作约定**：AI 沙盒对项目文件夹只能创建/覆盖文件，**不能删除或重命名**（git 锁文件曾因此卡死）。因此 git 提交、打 tag、推送一律由作者在本机执行，AI 负责改文件并给出待执行命令；node_modules 由作者本机 `npm install` 生成，AI 不在项目文件夹内装依赖。
 
-**阶段一：spike 周（2026-06-10 起，一周）**
+**阶段一：spike 周（实际 2026-06-11 = D1 起，一周；每日坑清单落 SPIKE-NOTES.md）**
 作者粗糙跑通核心能力链：loop → 工具 → 权限 → compaction → 子 agent → MCP。目标是暴露全局设计约束（如 loop 须可被子 agent 复用、AbortController 一开始就穿进 loop），不是产出好代码。纪律：不打磨、不发布；代码放 `spike` 分支，不作为参考实现；每日记"坑清单"（即各章"为什么需要它"的素材）。AI 并行搭发布管线。Day 7 未跑通的能力（如 MCP）顺延到对应里程碑前补 spike，不延长 spike 周。
 
 日程参考：D1 API 调用 + tool use 协议（裸 loop + 1 工具，裸 fetch 与 SDK 都摸一下）；D2 完整 loop + read/write/edit/bash（能修真实 bug）；D3 环境注入 + 权限确认；D4 compaction（全书最重，单独一天）；D5 子 agent + todo（重点验证 loop 可被复用）；D6 MCP client（第二重）；D7 缓冲 + 复盘（整理坑清单、拍板 fetch vs SDK）。
