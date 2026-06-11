@@ -70,8 +70,14 @@ export default defineConfig({
     sidebarMenuLabel: '目录',
     darkModeSwitchLabel: '主题',
     search: { provider: 'local' },
-    // TODO: GitHub 仓库建好后取消注释
-    // socialLinks: [{ icon: 'github', link: 'https://github.com/<user>/build-your-own-ai-agent' }],
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/haoofun/build-your-own-ai-agent' },
+    ],
+    editLink: {
+      pattern:
+        'https://github.com/haoofun/build-your-own-ai-agent/edit/main/book/:path',
+      text: '在 GitHub 上编辑此页',
+    },
     footer: {
       message: '书稿文字 CC BY-NC-SA 4.0 · 代码 MIT',
       copyright: '© 2026 haoo',
