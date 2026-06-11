@@ -54,8 +54,8 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 - [x] 定位、差异化调研、大纲 v0.1（见 OUTLINE.md，16 章 + 3 附录）
 - [x] 大纲评审（2026-06-10：差异化表新增 Windy 行、7 章补齐里程碑、定位改为深度优势）
 - [ ] spike 周（2026-06-10 起，见"协作工作流"）
-- [x] 发布管线（2026-06-11 搭好并沙盒验证：VitePress（srcDir=book、规划目录自动隐藏未写章节）+ interactive 容器 + llms.txt/llms-full.txt + pandoc epub 冒烟 + CI；写作约定见 WRITING.md；GitHub 推送与 Cloudflare Pages 绑定待作者操作，参数见 README）
-- [x] 域名购买 build-your-own-ai-agent.com + 文件夹更名（2026-06-10 完成；GitHub 同名仓库待建，本地已 git init）
+- [x] 发布管线（2026-06-11 搭好并沙盒验证：VitePress（srcDir=book、规划目录自动隐藏未写章节）+ interactive 容器 + llms.txt/llms-full.txt + pandoc epub 冒烟 + CI；写作约定见 WRITING.md；2026-06-11 全线上线：Cloudflare Pages 部署生效，build-your-own-ai-agent.com 主域 + www 均可访问，llms.txt 线上验证通过）
+- [x] 域名购买 + 文件夹更名 + GitHub 仓库（public）：github.com/haoofun/build-your-own-ai-agent，LICENSE = MIT + 正文 CC BY-NC-SA（2026-06-11 完成）
 - [ ] M1：第 0–5 章（发布管线已在 spike 周并行搭好）
 - [ ] M2–M5：见 OUTLINE.md 第八节
 
