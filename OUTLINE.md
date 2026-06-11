@@ -92,6 +92,7 @@ MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，�
 **13 自定义命令与 Skills**
 斜杠命令；skill 文件的按需加载——本质是"把 prompt 工程产品化"。
 → 里程碑：实现一个 `/commit` skill；用 token 计数证明不触发时它不在 prompt 里——按需加载眼见为实。
+→ 练习与延伸：把本书的导师 skill 装进你的 Claude Code（指向 skill 页）——书教 skills，书本身就是 skill。
 
 ### 第四部分 · 收尾
 
@@ -130,6 +131,8 @@ book/*.md ──→ VitePress ──→ 网站（含评论、章节导航）
 
 约定（2026-06-10 定）：markdown 为主，交互动画为孤岛（容器块 + 静态降级图，全书控制在关键处）；网站部署 Cloudflare Pages；电子书延后到 M4 生产，写作期仅保持 pandoc 兼容。
 
+**agent 可读（第四端）**：站点内置生成 llms.txt / llms-full.txt，读者可直接把链接丢给自己的 AI agent；M4 随 1.0 上线 **skill 页**——提供 SKILL.md（Claude Code）与 AGENTS.md 引导（Codex 等），让读者用自己的 agent 当导师学完本书。导师 prompt 苏格拉底式：讲原理、查作业、不代写（导师铁律的产品化，呼应 ch13「书教 skills，书即 skill」）。
+
 ## 七、指标（双层）
 
 **可控指标（过程）**：每周发布 1–2 章（上线即发布，不逐章推广）；投放统一延后至 M1 完成后（是否等到 1.0 届时定）：HelloGitHub、阮一峰周刊、掘金、知乎、V2EX；全书完成后向 build-your-own-x 提 PR（需英文版）。
@@ -144,5 +147,5 @@ book/*.md ──→ VitePress ──→ 网站（含评论、章节导航）
 | M1 | 第 0–5 章 | 进入逐章循环；管线已就绪，写完即发，最小可发布单元试水 |
 | M2 | 第 6–9 章 | 此时已超过 CodeCrafters 深度 |
 | M3 | 第 10–13 章 | 差异化核心；若 spike 周未跑通 MCP，进 M3 前补 spike |
-| M4 | 第 14–16 章 + 全书校对 | 发布 1.0 |
+| M4 | 第 14–16 章 + 全书校对 | 发布 1.0；电子书实际生产；上线 skill 页（SKILL.md / AGENTS.md，苏格拉底式导师 prompt） |
 | M5 | 英文翻译版 | 提 build-your-own-x PR |

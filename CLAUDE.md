@@ -28,10 +28,15 @@
 ## 仓库规划结构
 
 ```
-OUTLINE.md      # 课程大纲（当前唯一产物）
+OUTLINE.md      # 课程大纲
 CLAUDE.md       # 本文件
-book/           # 章节 markdown（规划中）
-code/           # 按章 tag 的参考实现（规划中）
+WRITING.md      # 写作规范（pandoc 兼容约定，评审章节时对照）
+README.md       # 临时版（含 Cloudflare Pages 部署参数），ch16 重写
+book/           # 章节 markdown（唯一内容源 → 网站/电子书/llms.txt）
+.vitepress/     # 网站配置（srcDir=book；新章放入 book/ 即自动上侧边栏）
+scripts/        # build-ebook.sh：pandoc epub 冒烟构建
+.github/        # CI：站点构建 + epub 冒烟
+code/           # 按章 tag 的参考实现（M1 起）
 ```
 
 ## 技术栈
@@ -40,7 +45,7 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 
 ## 决策记录（2026-06-10）
 
-**已定**：VitePress + Cloudflare Pages；markdown 为主、交互为孤岛；电子书 M4 生产；默认教学模型 Haiku（spike 周实测验证 ch00 的 ~$5 预算承诺）；License = 代码 MIT + 书稿文字 CC BY-NC-SA；逐章照常发布上线，但**主动投放推广统一延后**至 M1 完成后（是否再等 1.0 届时定）；项目/仓库/文件夹统一定名 **build-your-own-ai-agent**，域名 **build-your-own-ai-agent.com**（2026-06-10 定，购自 Cloudflare Registrar 为宜，与 Pages 部署同处管理）。
+**已定**：VitePress + Cloudflare Pages（对比过 Docusaurus/Starlight：MDX 与 pandoc 冲突、为三五个交互点引入整层框架杠杆过低；book/ 保持纯 markdown 使 SSG 成为可替换件）；markdown 为主、交互为孤岛；电子书 M4 生产；**agent 可读分层落地**（2026-06-10 定）：llms.txt / llms-full.txt 生成内置于发布管线，skill 页（SKILL.md + AGENTS.md 引导）随 M4 发布，skill 的导师 prompt 须苏格拉底式（讲原理、查作业、不代写——导师铁律的产品化），ch13 练习加"把本书装进你的 Claude Code"；默认教学模型 Haiku（spike 周实测验证 ch00 的 ~$5 预算承诺）；License = 代码 MIT + 书稿文字 CC BY-NC-SA；逐章照常发布上线，但**主动投放推广统一延后**至 M1 完成后（是否再等 1.0 届时定）；项目/仓库/文件夹统一定名 **build-your-own-ai-agent**，域名 **build-your-own-ai-agent.com**（2026-06-10 定，购自 Cloudflare Registrar 为宜，与 Pages 部署同处管理）。
 
 **待拍板**：裸 fetch vs 官方 SDK——spike 期间两种都试，Day 7 复盘时定（全书最大教学设计决策）；ch08 是否拆分、ch11 与 ch13 是否合并（大纲评审中提出，M1 期间定）。
 
@@ -49,7 +54,7 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 - [x] 定位、差异化调研、大纲 v0.1（见 OUTLINE.md，16 章 + 3 附录）
 - [x] 大纲评审（2026-06-10：差异化表新增 Windy 行、7 章补齐里程碑、定位改为深度优势）
 - [ ] spike 周（2026-06-10 起，见"协作工作流"）
-- [ ] 发布管线（AI 负责，**尚未开搭**，spike 周内完成：book/、code/ 结构、VitePress、pandoc 兼容、CI 冒烟；Cloudflare 绑定需作者操作）
+- [x] 发布管线（2026-06-11 搭好并沙盒验证：VitePress（srcDir=book、规划目录自动隐藏未写章节）+ interactive 容器 + llms.txt/llms-full.txt + pandoc epub 冒烟 + CI；写作约定见 WRITING.md；GitHub 推送与 Cloudflare Pages 绑定待作者操作，参数见 README）
 - [x] 域名购买 build-your-own-ai-agent.com + 文件夹更名（2026-06-10 完成；GitHub 同名仓库待建，本地已 git init）
 - [ ] M1：第 0–5 章（发布管线已在 spike 周并行搭好）
 - [ ] M2–M5：见 OUTLINE.md 第八节
@@ -61,6 +66,8 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 **导师铁律**：AI 替作者写了核心代码 = 作者失去该处的面试防御权。作者求助时，AI 讲原理、找毛病、摆利弊，不代写。
 
 ## 协作工作流（2026-06-10 定）
+
+**工程操作约定**：AI 沙盒对项目文件夹只能创建/覆盖文件，**不能删除或重命名**（git 锁文件曾因此卡死）。因此 git 提交、打 tag、推送一律由作者在本机执行，AI 负责改文件并给出待执行命令；node_modules 由作者本机 `npm install` 生成，AI 不在项目文件夹内装依赖。
 
 **阶段一：spike 周（2026-06-10 起，一周）**
 作者粗糙跑通核心能力链：loop → 工具 → 权限 → compaction → 子 agent → MCP。目标是暴露全局设计约束（如 loop 须可被子 agent 复用、AbortController 一开始就穿进 loop），不是产出好代码。纪律：不打磨、不发布；代码放 `spike` 分支，不作为参考实现；每日记"坑清单"（即各章"为什么需要它"的素材）。AI 并行搭发布管线。Day 7 未跑通的能力（如 MCP）顺延到对应里程碑前补 spike，不延长 spike 周。

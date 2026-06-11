@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # 站点构建（VitePress 自带 dead link 检查，坏链即失败）+ llms.txt 生成
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run docs:build
+
+  # 电子书冒烟：保证任何一章合入都没破坏 epub 路径（样式到 M4 再调）
+  ebook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y pandoc
+      - run: bash scripts/build-ebook.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: epub
+          path: dist/*.epub
+
+  # TODO(M1+): code/ 出现后加 job —— tsc --noEmit + node --test
+  # TODO(M4, ch16): 干净容器 npm i -g 后三分钟跑通 demo 的冒烟测试

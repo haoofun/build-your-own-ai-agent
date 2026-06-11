@@ -1,0 +1,17 @@
+/* 交互孤岛容器：网页端的视觉边界；电子书端由 pandoc 降级为静态图 */
+.interactive-island {
+  margin: 24px 0;
+  padding: 16px;
+  border: 1px dashed var(--vp-c-brand-1);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+}
+.interactive-island::before {
+  content: '交互演示';
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--vp-c-brand-1);
+}

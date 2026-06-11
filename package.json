@@ -1,0 +1,17 @@
+{
+  "name": "build-your-own-ai-agent",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview",
+    "ebook": "bash scripts/build-ebook.sh"
+  },
+  "devDependencies": {
+    "markdown-it-container": "^4.0.0",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-llms": "^1.13.1"
+  }
+}
