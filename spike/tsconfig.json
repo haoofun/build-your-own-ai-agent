@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["*.ts"],
+  "exclude": ["node_modules", "d1-fetch.ts", "d1-sdk.ts"]
+}
