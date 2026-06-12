@@ -2,6 +2,7 @@ import { exec } from "child_process";
 import { readFile, writeFile } from "fs/promises";
 import { promisify } from "util";
 
+// promisify(exec) 在非零 exit 时直接 reject
 const execAsync = promisify(exec);
 
 export async function readFileTool(path: string): Promise<string>{
@@ -17,8 +18,22 @@ export async function writeFileTool(path: string, content: string){
   }
 }
 
+/**
+ * writeFileTool / editFileTool 里 catch + console.log，错误去了终端（人的频道），模型频道里什么都没有，
+ * 函数返回 undefined。后果链：写失败 → 模型收到空 tool_result → 模型宣布"已写入"→ 流畅地错下去。
+ * 
+ * @param path 
+ * @param oldString 
+ * @param newString 
+ */
 export async function editFileTool(path: string, oldString: string, newString:string) {
   const content = await readFile(path, "utf8")
+  /**
+   * 问题/坑
+   * 字符串版 replace 只替换第一个匹配
+   * 0 匹配时 replace 原样返回，然后你把没变的内容写回去、报告成功。模型以为改完了，文件一字未动。
+   * JS 冷知识坑：replace 的替换串里 $& $' 等是特殊模式——new_string 若含 $，写进去的不是你给的字面量。修法是用 replacer 函数形式（replace(old, () => newString)）或干脆 indexOf + slice 手拼。这条值得进章节当 callout。
+   */
   const newContent = content.replace(oldString, newString)
   try{
     await writeFile(path, newContent, "utf8")
@@ -103,10 +118,8 @@ export const tools = [
   },
 ];
 
-// 这个函数是“真正执行工具”的地方。
-// 模型只会说：我要调用 read_file，参数是 { path: "xxx" }。
-// 我们要把这个名字和参数，转成真正的函数调用。
-export async function runTool(name: string, input: any) {
+
+export async function runTool(name: string, input: unknown) {
   if (name === "read_file") {
     return await readFileTool(input.path);
   }
