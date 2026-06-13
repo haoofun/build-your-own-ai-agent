@@ -16,6 +16,8 @@ type RunAgentOptions = {
     messages: MessageParam[],
     tools: ToolDefinition[],
     signal?: AbortSignal
+    system?: string
+    onToolCall?: (toolName: string, input: unknown) => Promise<boolean>;
 }
 
 type AgentStopReason = StopReason | "max_turns"
@@ -46,6 +48,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
             messages,
             tools: opts.tools,
             signal,
+            system: opts.system
         });
 
         usage.inputTokens += message.usage.input_tokens;
@@ -66,7 +69,22 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
         const content: ContentBlockParam[] = []
         for (const toolUse of toolUses) {
-            const toolResult: ToolResultBlock = { tool_use_id: toolUse.id, type: "tool_result" }
+            const toolResult: ToolResultBlock = { tool_use_id: toolUse.id, type: "tool_result" }        
+                        
+            // 权限判断
+            const needsApproval = toolUse.name !== "read_file";
+
+            if (needsApproval && opts.onToolCall) {
+                const allowed = await opts.onToolCall(toolUse.name, toolUse.input);
+
+                if (!allowed) {
+                    toolResult.content = "用户拒绝了此操作";
+                    toolResult.is_error = true;
+                    content.push(toolResult);
+                    continue;
+                }
+            }
+            
             try {
                 const result = await runTool(toolUse.name, toolUse.input, signal)
                 toolResult.content = result
@@ -95,6 +113,7 @@ type CreateMessageOptions = {
     messages: MessageParam[];
     tools: ToolDefinition[];
     signal?: AbortSignal;
+    system?: string
 };
 
 async function createMessage(opts: CreateMessageOptions): Promise<Message> {
@@ -115,6 +134,7 @@ async function createMessage(opts: CreateMessageOptions): Promise<Message> {
             max_tokens: opts.maxTokens,
             messages: opts.messages,
             tools: opts.tools,
+            system: opts.system
         }),
         signal: opts.signal,
     });

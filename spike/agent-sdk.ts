@@ -15,6 +15,9 @@ type RunAgentOptions = {
      * 
      */
     signal?: AbortSignal
+    // d3, 加入系统提示词，由 Environment Info 和 Doing task组成
+    system?: string
+    onToolCall?: (toolName: string, input: unknown) => Promise<boolean>;
 }
 
 type AgentStopReason = StopReason | "max_turns"
@@ -46,7 +49,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
             model: model,
             max_tokens: maxTokens,
             messages: messages,
-            tools: opts.tools
+            tools: opts.tools,
+            system: opts.system
         },
         { signal }
         );
@@ -69,10 +73,24 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         }
 
         const content: Array<ContentBlockParam> = []
-        for (const toolUse of toolUses){
+        for (const toolUse of toolUses){  
             // 使用 ToolUseBlock 而非 ToolUseBlockParam
             // Param 后缀的类型是"你发出去的"（request 侧），message.content 里的块是 response 侧的 ToolUseBlock（无 Param）
             const tool_result: ToolResultBlockParam = {tool_use_id: toolUse.id, type: "tool_result"}
+            
+            // 权限判断
+            const needsApproval = toolUse.name !== "read_file";
+
+            if (needsApproval && opts.onToolCall) {
+                const allowed = await opts.onToolCall(toolUse.name, toolUse.input);
+
+                if (!allowed) {
+                    tool_result.content = "用户拒绝了此操作";
+                    tool_result.is_error = true;
+                    content.push(tool_result);
+                    continue;
+                }
+            }
             try {
                 // 加上取消信号量
                 const result = await runTool(toolUse.name, toolUse.input, signal)
