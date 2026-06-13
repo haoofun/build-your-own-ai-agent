@@ -47,13 +47,13 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 
 **已定**：VitePress + Cloudflare Pages（对比过 Docusaurus/Starlight：MDX 与 pandoc 冲突、为三五个交互点引入整层框架杠杆过低；book/ 保持纯 markdown 使 SSG 成为可替换件）；markdown 为主、交互为孤岛；电子书 M4 生产；**agent 可读分层落地**（2026-06-10 定）：llms.txt / llms-full.txt 生成内置于发布管线，skill 页（SKILL.md + AGENTS.md 引导）随 M4 发布，skill 的导师 prompt 须苏格拉底式（讲原理、查作业、不代写——导师铁律的产品化），ch13 练习加"把本书装进你的 Claude Code"；默认教学模型 Haiku（spike 周实测验证 ch00 的 ~$5 预算承诺）；License = 代码 MIT + 书稿文字 CC BY-NC-SA；逐章照常发布上线，但**主动投放推广统一延后**至 M1 完成后（是否再等 1.0 届时定）；项目/仓库/文件夹统一定名 **build-your-own-ai-agent**，域名 **build-your-own-ai-agent.com**（2026-06-10 定，购自 Cloudflare Registrar 为宜，与 Pages 部署同处管理）。
 
-**待拍板**：裸 fetch vs 官方 SDK——spike 期间两种都试，Day 7 复盘时定（全书最大教学设计决策）；ch08 是否拆分、ch11 与 ch13 是否合并（大纲评审中提出，M1 期间定）。
+**待拍板**：裸 fetch vs 官方 SDK——spike 全程双版并行推进（2026-06-13 定），D7 复盘时拍板正文策略；ch08 是否拆分、ch11 与 ch13 是否合并（大纲评审中提出，M1 期间定）。
 
 ## 当前状态（2026-06）
 
 - [x] 定位、差异化调研、大纲 v0.1（见 OUTLINE.md，16 章 + 3 附录）
 - [x] 大纲评审（2026-06-10：差异化表新增 Windy 行、7 章补齐里程碑、定位改为深度优势）
-- [ ] spike 周（实际 D1 = 2026-06-11，较原计划顺延一天；坑清单见 SPIKE-NOTES.md）
+- [ ] spike 周（实际 D1 = 2026-06-11，较原计划顺延一天；坑清单见 SPIKE-NOTES.md）。D1 ✓；D2 ✓（06-13 收口：SDK 版 + fetch 版双版验收通过，victim bug 全绿，abort 实证无孤儿进程，tsc 全绿；types.ts 手写类型、agent-fetch.ts 移植、cli.ts 入口拆分、AgentStopReason 出口语义均完成）
 - [x] 发布管线（2026-06-11 搭好并沙盒验证：VitePress（srcDir=book、规划目录自动隐藏未写章节）+ interactive 容器 + llms.txt/llms-full.txt + pandoc epub 冒烟 + CI；写作约定见 WRITING.md；2026-06-11 全线上线：Cloudflare Pages 部署生效，build-your-own-ai-agent.com 主域 + www 均可访问，llms.txt 线上验证通过）
 - [x] 域名购买 + 文件夹更名 + GitHub 仓库（public）：github.com/haoofun/build-your-own-ai-agent，LICENSE = MIT + 正文 CC BY-NC-SA（2026-06-11 完成）
 - [ ] M1：第 0–5 章（发布管线已在 spike 周并行搭好）

@@ -1,53 +1,133 @@
 import { exec } from "child_process";
 import { readFile, writeFile } from "fs/promises";
 import { promisify } from "util";
+// sdk 版本，直接使用 sdk 的 Tool 类型
+// import { Tool } from "@anthropic-ai/sdk/resources";
+
+// fetch 版本，自定义类型
+import type { ToolDefinition } from "./types.ts";
+
+type TooolInput = Record<string, unknown>
+
+function asObject(input: unknown): TooolInput {
+  if (input === null || typeof input !== "object" || Array.isArray(input)){
+    throw new Error("工具参数必须是 Object")
+  }
+  return input as TooolInput
+}
+
+function stringField(toolInput: TooolInput, key: string): string {
+  const value = toolInput[key]
+  if (typeof value !== "string") {
+    throw new Error(`${key} 必须是字符串，收到 ${String(value)}`);
+  }
+
+  return value
+}
+
+export function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
 
 // promisify(exec) 在非零 exit 时直接 reject
 const execAsync = promisify(exec);
 
-export async function readFileTool(path: string): Promise<string>{
-  return await readFile(path, "utf8")
+// 取消信号是后来加的
+export async function readFileTool(input: unknown, signal?: AbortSignal): Promise<string>{
+  const arg = asObject(input)
+  const path = stringField(arg, "path")
+  return await readFile(path, { encoding: "utf8", signal })
 }
 
 // Promise 本身就代表成功或失败。
-export async function writeFileTool(path: string, content: string){
-  try{
-    await writeFile(path, content, "utf8")
-  }catch(err) {
-    console.log(err)
+export async function writeFileTool(input: unknown, signal?: AbortSignal){
+  const arg = asObject(input)
+  const path = stringField(arg, "path")
+  const content = stringField(arg, "content")
+
+  await writeFile(path, content, { encoding: "utf8", signal })
+  return `已写入 ${path}，${Buffer.byteLength(content, "utf8")} 字节`;
+}
+
+export async function editFileTool(input: unknown, signal?: AbortSignal) {
+  const arg = asObject(input)
+  const path = stringField(arg, "path")
+  const oldString = stringField(arg, "oldString")
+  const newString = stringField(arg, "newString")
+
+  if (oldString === "") {
+    throw new Error("old_string 不能为空")
+  }
+  if (oldString === newString) {
+    throw new Error("old_string 和 new_string 不能相同");
+  }
+
+  const content = await readFile(path, { encoding: "utf8", signal });
+  const count = content.split(oldString).length - 1;
+
+  if (count === 0) {
+    throw new Error(`没有在 ${path} 中找到 old_string，请重新读取文件后再试`);
+  }
+  if (count > 1) {
+    throw new Error(`old_string 在 ${path} 中出现了 ${count} 次，请提供更精确的 old_string`);
+  }
+
+  // replace(oldString, () => newString) 是为了避免 $& 这类 JS 替换串特殊语法。
+  const newContent = content.replace(oldString, () => newString);
+  await writeFile(path, newContent, { encoding: "utf8", signal });
+  return `已修改 ${path}`;
+}
+
+export async function bashTool(input: unknown, signal?: AbortSignal): Promise<string> {
+  const arg = asObject(input)
+  const command = stringField(arg, "command")
+  try {
+    const { stdout, stderr } = await execAsync(command, {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+      signal,
+    });
+    // 没 catch 错误就返回码为 0，因为 execAsync 会出现非零 exit 的业务结果
+    return formatCommandResult(0, stdout, stderr);
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) {
+      throw error;
+    }
+
+    const err = error as {
+      code?: number | string;
+      stdout?: string;
+      stderr?: string;
+      message?: string;
+    };
+
+    return formatCommandResult(
+      err.code ?? "unknown",
+      err.stdout ?? "",
+      err.stderr ?? err.message ?? ""
+    );
   }
 }
 
-/**
- * writeFileTool / editFileTool 里 catch + console.log，错误去了终端（人的频道），模型频道里什么都没有，
- * 函数返回 undefined。后果链：写失败 → 模型收到空 tool_result → 模型宣布"已写入"→ 流畅地错下去。
- * 
- * @param path 
- * @param oldString 
- * @param newString 
- */
-export async function editFileTool(path: string, oldString: string, newString:string) {
-  const content = await readFile(path, "utf8")
-  /**
-   * 问题/坑
-   * 字符串版 replace 只替换第一个匹配
-   * 0 匹配时 replace 原样返回，然后你把没变的内容写回去、报告成功。模型以为改完了，文件一字未动。
-   * JS 冷知识坑：replace 的替换串里 $& $' 等是特殊模式——new_string 若含 $，写进去的不是你给的字面量。修法是用 replacer 函数形式（replace(old, () => newString)）或干脆 indexOf + slice 手拼。这条值得进章节当 callout。
-   */
-  const newContent = content.replace(oldString, newString)
-  try{
-    await writeFile(path, newContent, "utf8")
-  }catch(err) {
-    console.log(err)
-  }
+function formatCommandResult(
+  code: number | string,
+  stdout: string,
+  stderr: string
+) {
+  return [
+    `exit code: ${code}`,
+    "",
+    "stdout:",
+    stdout || "(无输出)",
+    "",
+    "stderr:",
+    stderr || "(无输出)",
+  ].join("\n");
 }
 
-export async function bashTool(command:string): Promise<string> {
-  const { stdout, stderr } = await execAsync(command)
-  return stdout + stderr 
-}
-
-export const tools = [
+export const tools: ToolDefinition[] = [
+  // sdk 版本
+  // export const tools: Tool[] = [
   {
     name: "read_file",
     description: "Read a file from disk",
@@ -90,16 +170,16 @@ export const tools = [
           type: "string",
           description: "The file path to edit",
         },
-        old_string: {
+        oldString: {
           type: "string",
-          description: "The text to replace",
+          description: "old_string must be unique within the file and match exactly, character for character (including whitespace).",
         },
-        new_string: {
+        newString: {
           type: "string",
           description: "The replacement text",
         },
       },
-      required: ["path", "old_string", "new_string"],
+      required: ["path", "oldString", "newString"],
     },
   },
   {
@@ -110,7 +190,7 @@ export const tools = [
       properties: {
         command: {
           type: "string",
-          description: "The command to run",
+          description: "There is no persistent session; the `cd` command does not persist across subsequent calls.",
         },
       },
       required: ["command"],
@@ -119,22 +199,22 @@ export const tools = [
 ];
 
 
-export async function runTool(name: string, input: unknown) {
+export async function runTool(name: string, input: unknown, signal?: AbortSignal) {
   if (name === "read_file") {
-    return await readFileTool(input.path);
+    return await readFileTool(input, signal);
   }
 
   if (name === "write_file") {
-    return await writeFileTool(input.path, input.content);
+    return await writeFileTool(input, signal);
   }
 
   if (name === "edit_file") {
-    return await editFileTool(input.path, input.old_string, input.new_string);
+    return await editFileTool(input, signal);
   }
 
   if (name === "bash") {
-    return await bashTool(input.command);
+    return await bashTool(input, signal);
   }
 
-  throw new Error(`Unknown tool: ${name}`);
+  throw new Error(`未知工具: ${name}`);
 }

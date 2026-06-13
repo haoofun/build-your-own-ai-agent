@@ -78,6 +78,14 @@
 2. `if (!toolUses)` 永远为假：空数组在 JS 中是真值，导致 loop 不会终止、一直空转请求直到 rate limit——**死循环烧的是真钱**，轮数/成本保险丝（D2 待做）的直接动机；正确写法 `!toolUses.length`
 3. （AI review 揪出）并行结果每个 tool_result 单独 push 一条 user 消息：API 容忍了（200），但官方 troubleshooting 明确列为反模式——会教模型以后少用并行。正确：所有 tool_result 收进**同一条** user 消息的 content 数组。「没报错 ≠ 写对了」第二例（第一例见 D1 坑 6）
 4. SDK 联合类型红线：`message.content` 是 ContentBlock 联合类型，`.id/.input` 只在 ToolUseBlock 上，`(c: any)` 糊不掉；正解是判别式收窄或类型谓词，收窄后 `input` 仍是 `unknown`（模型生成的运行时数据，SDK 故意不担保）。注意 **tsx 只转译不做类型检查**，"能跑"与"红线"会并存——D7 账本重要一笔：裸 fetch 的 any 让同样的错误假设静默通过
+5. **修过的坑不自动免疫**：上午刚在 d1 文件里修过的坑 3（并行结果分多条 user 消息）下午重写 loop 时原地复发，且更隐蔽——push 进多条 user 消息的是**同一个 content 数组的引用**，两条消息共享全部 tool_result → 同一 tool_use_id 出现两次 → 400；单工具调用完全正常，仅并行触发。肌肉记忆比认知慢，ch02 须把「合并进单条 user 消息」写成黑体警告（顺带：这处结构混乱的直接症状是少一个右括号，被 tsc TS1005 揪出）
+6. 工具层把错误吞进 console.log：write/edit 失败 catch 后打到终端（人的频道），模型频道收到 undefined——D1 坑 6「静默垃圾」在工具层重演。定式：**工具内部自由 throw，try/catch 只住在 loop 派发处一个地方**，catch 转 `is_error: true` 回传；成功路径也必须返回有内容的确认字符串（如「已写入 X，N 字节」），空 tool_result 是另一种静默垃圾
+7. edit 一行三坑：`content.replace(old, new)` ①字符串版只替换首个匹配且不吭声 ②0 匹配时原样返回 → 把没变的文件写回并报告成功，模型以为改完了 ③替换串里 `$&` `$'` 是 JS 特殊模式，new_string 含 `$` 会写入意料外内容。修法：`split(old).length - 1` 计数 + 唯一性强制（0 报错 / >1 报错）+ replacer 函数形式 `replace(old, () => new)`。**「没找到 old_string」的报错是模型自愈的唯一线索**——Haiku 必然产出差一个空格的 old_string，这条报错就是 edit 工具的灵魂
+8. `promisify(exec)` 非零 exit 直接 reject：grep 无匹配（exit 1）会被当成工具失败，与「非零 exit 是业务结果」的拍板相反。bash 因此是唯一需要自己 catch 的工具——从 reject 的 err 上捞 stdout/stderr/code 编排成正常结果文本，属于语义转换，与「工具不 catch」定式并存不矛盾
+9. **显式 any 能过 strict**：tsc 拦的是隐式 any，`(c: any)` 和 `as` 滥用畅通无阻——类型纪律一半靠编译器一半靠 review。顺带学费：`Param` 后缀类型是 request 侧（你发出去的），response 侧是无 Param 的 `ToolUseBlock`，结构上凑巧兼容所以「能跑」；正解类型谓词 `filter((c): c is ToolUseBlock => ...)`，零 as 零 any
+10. 字面量拓宽（上午预警、晚间兑现）：无标注的 tools 数组里 `type: "object"` 拓宽为 string，传 `Tool[]` 报 `string is not assignable to "object"`。解法三选一：声明处标注 / `as const` / types.ts 手写 Tool 类型（推荐，反正是 fetch 版入场费）
+11. 入口块长在模块尾部 = **import 即副作用**：agent-sdk.ts 底部直接 await runAgent(...)，任何 import 它的文件（D5 子 agent、agent-fetch、测试）都会误触发真 API 调用。「可复用 loop」不只是函数签名问题，还是模块边界问题——入口必须单独文件
+12. **认知坑（今日最值钱）：难度倒挂。**预期 loop 是主角、工具是配角；实际 loop 形状被协议五条回传规则钉死（没有自由度 = 没有难度，「文档」就是 D1 自己整理的速查），而工具层被 review 出十种失败模式。**agent 质量的大头住在工具层和它们的报错文本里**——ch02 中心论点候选
 
 ### 上午进度（D1 遗留清账，本 session）
 
@@ -85,16 +93,41 @@
 - d1-fetch.ts / d1-sdk.ts **冻结为标本**（含完整实验记录与原始输出，章节叙事素材），此后新开文件 + git commit 当时间机
 - 待确认：修复后的 fetch 版需重跑一次（文件里贴的"验证成功"输出 msg id 与修改前完全相同，是旧日志）
 
-### 下午待办（D2 正题，新 session 接手）
+### 当日决策（下午对谈拍板）
 
-1. 新文件（如 agent.ts / tools.ts / 入口），loop 提炼成可复用函数；SDK 版联合类型按坑 4 收窄，别带 `any` 进新文件
-2. **AbortController 的 signal 今天穿进 loop**（CLAUDE.md 点名的全局约束，D5 子 agent 复用依赖它）
-3. 轮数/成本保险丝（直接动机 = 坑 2 的 rate limit 死循环）
-4. max_tokens 1000 → 4096（防截断产生不完整 tool_use，见 D1 速查）
-5. 工具加到四件套 read / write / edit / bash；工具执行 try/catch，失败以 `is_error: true` 回传（D1 坑 5 的遗留实验）
-6. 验收标准：修一个真实 bug
+- **四项拍板**：fetch/SDK 双版同推（差异记 D7 账，SDK 先过验收、fetch 后移植）；loop = 纯函数 + opts（opts 留 callbacks 位给 D3 权限回调；判据 = D5 子 agent 能否一行不改地复用）；edit = old/new 精确替换 + 唯一性强制（Claude Code 同款，模型训练里最熟这个形态）；bash 非零 exit ≠ is_error（exit code 进结果文本，仅 spawn 失败/超时才 is_error）
+- 实现顺序：tools 修缮 → agent-sdk.ts 过验收 → types.ts（只 type 实际消费的字段，对照 d1-fetch.ts 留的原始 JSON 写，不抄 SDK）→ agent-fetch.ts 移植 → 同一 victim 二次验收
+- DoD 增设：`npx tsc --noEmit` 绿灯（tsconfig 已落，冻结标本以 exclude 跳过；动机 = 坑 4/坑 9，tsx 不查类型）
+- 验收夹具：`spike/victim/` 迷你购物车（AI 搭，零依赖，`npm test`），5 测 2 过 3 挂——一个崩溃（`!items` 防不住 `[]`，与坑 2 同款真值病，章节可首尾呼应）+ 一个算错（折扣乘反）。**验收前先 commit victim**，否则 fetch 轮没有 bug 可修（重置用 `git checkout -- spike/victim`）
 
--
+### D2 收工快照（晚间，验收顺延 D3 晨）
+
+已完成：tools.ts 四件套成形（unknown 收窄 asObject/stringField、edit 四卫兵、bash 业务语义、signal 全穿透、description 写入唯一性与无持久会话提示）；agent-sdk.ts loop 成形（纯函数 + opts、maxTurns 保险丝、is_error 管道含 abort 重抛卫兵、类型谓词收窄、signal 三处穿透、usage 累计）；victim 夹具 + tsconfig + DoD 闸门。
+
+**未完（明早接手清单，≈1h 到验收）**：
+
+1. tools 数组类型标注，消掉 tsc 唯一红灯（坑 10，三选一）
+2. 出口语义两处：maxTurns 耗尽误报 end_turn——SDK 的 StopReason 联合里没有 "max_turns"，需自定义 `AgentStopReason = StopReason | "max_turns"`（agent 的退出词汇表 ⊋ API 的）；无工具调用的早退应回传真实 `message.stop_reason`，且 `=== "max_tokens"` 时大声 log（4096 只是更难截断，不是不会）
+3. 入口拆独立 cli 文件（坑 11）+ env 加载（`tsx --env-file=.env` 或入口 dotenv）+ 顶层 try/catch（SIGINT abort 后别留丑栈）
+4. 跑验收：commit victim → agent 修 bug 至全绿（验收纪律 = 读对话本身，坑 6）→ abort 实证（跑 `sleep 30` 时 Ctrl-C，`ps` 查无孤儿进程）
+
+fetch 半边（types.ts + agent-fetch.ts 移植 + 二次验收）≈ 再半个上午，贴 D3 正题前完成；P1 尾巴（read 截断上限、bash 超时结果文案、TooolInput typo）不挡验收，绿后顺手。
+
+### D2 收口（06-13 下午，Opus 接手）
+
+接手清单四项 + fetch 半边，全部完成：
+
+1. ✅ tools 数组加 `Tool[]` 类型标注（从 SDK import `Tool`），tsc 绿灯
+2. ✅ 出口语义：定义 `AgentStopReason = StopReason | "max_turns"`；maxTurns 耗尽返回 `"max_turns"`；无工具调用早退回传 `message.stop_reason`，`max_tokens` 时 `console.warn`
+3. ✅ 入口拆 cli.ts：agent-sdk.ts 只导出 `runAgent`；cli.ts 负责 env 加载（`tsx --env-file=.env`）、AbortController、SIGINT、顶层 try/catch（abort 走 `process.exit(130)`）、提示词从 `process.argv[2]` 读
+4. ✅ 验收：SDK 版修 victim 全绿 + abort 实证（`sleep 30` + Ctrl-C，`ps aux | grep [s]leep` 无孤儿）
+5. ✅ fetch 半边：types.ts 手写类型（只 type 消费字段，input: unknown）；agent-fetch.ts 移植（抽 `createMessage` 函数封装 fetch 细节）；victim 重置后二次验收全绿
+
+**当日决策**：spike 全程双版并行推进（不等 D7 定）。D7 仅拍板正文教学策略（ch01-02 fetch 讲协议，ch03 起切 SDK 还是全程双版）。
+
+**D7 账本增量**：SDK 除流式外还提供自动重试（429/5xx 默认 2 次）、智能超时（大 max_tokens 动态延长）、结构化输出（messages.parse + zod）、Tool Runner（内置 agent loop）、MCP helpers（mcpTools/mcpMessages 类型转换）、错误类型体系（子类 + _request_id）——fetch 版均无，D6 MCP 是差异分水岭。
+
+**P1 尾巴**（不挡 D3，顺手修）：read 截断上限、bash 超时结果文案、TooolInput typo。
 
 ## D3（06-13）环境注入 + 权限确认
 
@@ -134,6 +167,8 @@
 - 裸 fetch 观察（D1）：协议原貌全程可见——D1 的全部领悟（块数组、stop_reason、token 账、新字段）都来自直接读原始 JSON；教学透明度最高
 - SDK 观察（D1，仅 hello 级）：`new Anthropic()` 自动读 ANTHROPIC_API_KEY；响应有完整类型；重试/超时未实测（挂 D2）
 - 干扰项备忘：两版 hello 回答长短差异（60 vs 19 tokens）是采样随机性，**不是** fetch/SDK 的差别，对比时剔除
+- D2 增量：abort 穿透姿势不同——fetch 是 `fetch(url, { signal })`，SDK 是 `create(params, { signal })` 第二参（0.104.1 实测 request-options 支持）；SDK 默认自动重试 429/5xx 两次、fetch 裸奔（撞 rate limit 时两版行为肉眼可见地不同）；手写收窄的真实成本 = asObject/stringField 两个十行函数（不引 zod 的全部代价）；SDK 类型的学费 = Param/非 Param 方向感 + 字面量拓宽（坑 9/10），fetch 版对应成本 = types.ts 手写劳动（实测后补记）
+- D2 收口增量（06-13 查证）：SDK 除流式外还有——自动重试（429/5xx/408/409 默认 2 次指数退避）、智能超时（默认 10min，大 max_tokens 动态延长到 60min）、结构化输出（`messages.parse()` + zod/JSON Schema）、Tool Runner（`messages.toolRunner()` = 内置 agent loop，正文须正面回应）、MCP helpers（`mcpTools()` / `mcpMessages()` 类型转换，D6 差异分水岭）、错误类型体系（BadRequestError/RateLimitError 子类 + `_request_id`）、日志系统（`logLevel` + 自定义 logger）、Batch API、文件上传、自动分页。fetch 版在 D3-D5 期间差异仍小（主要是重试和超时），D6 MCP 起差异急剧拉大
 
 ---
 
