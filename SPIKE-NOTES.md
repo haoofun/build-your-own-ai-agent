@@ -129,15 +129,99 @@ fetch 半边（types.ts + agent-fetch.ts 移植 + 二次验收）≈ 再半个�
 
 **P1 尾巴**（不挡 D3，顺手修）：read 截断上限、bash 超时结果文案、TooolInput typo。
 
+### Review 补记（06-13，二次 review 揪出）
+
+1. **反面案例：edit_file 参数名是驼峰，选它的理由却引的是蛇形，还和自己 description 打架。** schema 参数 `oldString`/`newString`（驼峰），实现读的也是 `stringField(arg, "oldString")`；但同一工具的 description 写的是 "old_string must be unique…"（蛇形）。D2 当日给 edit 选 old/new 精确替换的理由是"Claude Code 同款、模型训练里最熟这个形态"——可 Claude Code 真实参数就是蛇形 `old_string`/`new_string`。即"为对齐模型最熟的形态而选它"，落地却用了模型没那么熟的驼峰，且 description 与 schema 不同口径。**正文反面案例价值高**：工具形态要精确到命名风格，description 必须与 schema 同口径，模型差一个 `_` 就可能少配一分。修法二选一——参数对齐蛇形 `old_string`/`new_string`，或删掉"Claude Code 同款"那条理由、明说这是自定义形态。
+2. **策略提醒（非 bug，喂 D7 账）：两个 loop 近乎逐行重复且每天在长。** agent-sdk.ts 与 agent-fetch.ts 的 loop 主体近乎重复，D3 权限分支两版各手抄一遍。双版并行是 D2 有意决策，但维护税是复利的——D4 compaction / D5 子 agent / D6 MCP 每加一个能力都要两处同步改、同步测。D7 拍 fetch vs SDK 时，"把两份 loop 一路扛到 D6"应作为一项成本计入账，与"教学透明度""差异分水岭"并列。
+
 ## D3（06-13）环境注入 + 权限确认
+
+**目标**：system prompt 注入环境信息 + 工具执行前权限确认（read 免审、write/edit/bash 拦截）。
 
 ### 坑清单
 
--
+1. **权限机制工作 ≠ 模型理解拒绝**。连续拒绝所有 bash 调用后，Haiku 不会说"我没有 bash 权限，无法完成"然后 end_turn，而是不断换命令重试（`ls -la` → `find` → `pwd` → `cd && npm test` → `node --test` → `find -name "*.js"`），直到 maxTurns 耗尽以 `max_turns` 退出。权限确认不只是代码问题——**还需要 system prompt 告知模型拒绝的含义**（如"若用户拒绝，解释为何需要该操作并请求重新考虑，或改变方案"）。真实产品 Claude Code 的 system prompt 里有专门的权限引导段。教学点：工具层做对了拦截，但 agent 行为质量还取决于 prompt 层。
+2. **read_file 免审暴露目录列表盲区**。bash 全被拒后模型转向 read_file（免审），但 read_file 读目录返回 `EISDIR`、猜文件名（`victim/cart.js`、`victim/index.js`）返回 ENOENT。模型只能靠猜测文件路径。这说明：没有 bash 的场景下，需要一个列目录的只读工具（如 `list_files`），否则模型连"看到有什么文件"都做不到。Claude Code 有专门的 `ListFilesTool`。
+3. **环境注入的投资回报率极高**。加了 `Working directory: ${process.cwd()}` 后，模型不再猜 `/package.json`（D1 坑 5 重现概率显著降低）。四行 system prompt（cwd/platform/shell/date）+ 两行行为指引（"用工具而非猜测"），零成本但效果立竿见影。
+4. **readline 不关进程不退**。`createInterface` 会持有 stdin 引用，正常路径忘了 `rl.close()` 导致 Node 进程挂起不退出——catch 里关了但 try 正常结束时没关。`finally` 是唯一正确位置。
+
+### 当日决策
+
+- 权限模型：回调式 `onToolCall?: (name, input) => Promise<boolean>`，loop 层在 runTool 前调用；read_file 硬编码免审（与 Claude Code 一致：只读工具不拦）；默认无回调 = 全部放行（向后兼容 D2 行为）
+- 环境注入：`system?: string` 加到 opts，cli.ts 拼装（cwd/platform/shell/date + 最小行为指引），不在 loop 内部硬编码（保持 runAgent 通用）
+- 验收标准：(1) victim 修 bug 全绿（全部批准）✓ (2) 拒绝测试：全拒 bash 观察模型反应 → 确认 is_error 正确回传、max_turns 兜底生效 ✓
+
+### D3 未完成项（记录，不在 spike 内实现）
+
+1. **system prompt 加权限引导**：告诉模型"如果工具被拒绝，解释为何需要该操作或改变方案，不要反复重试同类操作"。加完后重跑拒绝测试验证模型行为改善——ch07 正文素材。
+2. **list_files 只读工具**：bash 被拒后模型无法列目录，只能猜文件名。加一个免审的 `list_files` 工具可解决——ch03 或 ch06 正文设计决策。
+3. **更完整的 system prompt**：当前只有 4 行环境 + 2 行行为指引。Claude Code 实际有 20+ 条件组件（git status、目录结构、CLAUDE.md 加载、tone/style 等）——ch06 正文素材，不属于 spike 范围。
+
+### D3 收口
+
+SDK 版 + fetch 版均完成，权限逻辑一致。tsc 绿灯。核心机制验证完毕（环境注入生效、权限拦截+回传+兜底均正常），上述未完成项留给正文章节。
+
+### Review 补记（06-13，二次 review 揪出）
+
+1. **架构债：`"read_file"` 字符串焊进了"通用" loop。** `needsApproval = toolUse.name !== "read_file"`（agent-sdk.ts / agent-fetch.ts 各一处）把一个具体工具名钉进了 `runAgent`，与 D2 拍板"保持 runAgent 通用"及"loop 可被子 agent 复用"相抵——免审策略应跟工具走（"只读/安全"标志挂在工具定义上，或经 opts 传免审集合），不该焊在 loop 里。spike 阶段硬编码可接受，但这是债，且**恰好是 ch07 权限设计的核心利弊**；D5 子 agent 复用 loop、若免审集合不同会立刻暴露。
+2. **验收 `✓` 是"机制通"非"行为对"。** "全拒 bash → is_error 回传 + max_turns 兜底 ✓" 两件机械事实确实发生，但坑 1 已证模型行为是坏的（thrash 到耗尽）。验收标准低到 thrash 也能过——写正文时别把这个 `✓` 当行为正确的背书。
+3. **fetch 版 types.ts 给 `stop_reason` 取了巧。** 手写成 `StopReason`（非空）→ fetch loop 不用 `!`；SDK 版是 `StopReason | null`（流式时为 null）→ agent-sdk.ts 两处用了 `message.stop_reason!`。两版都编译、对非流式都对，但这是手写类型偷的懒，与 D2 坑 9"类型纪律一半靠 review"同源：要么 fetch 版也写可空并在 loop 处理，要么显式记下"非流式必非空"这个假设。
+4. **小**：systemPrompt 的 `Date` 用 `toISOString()`（UTC），而 Platform/Shell 为本地——给模型的时间和环境时区不一致；ch06 写完整 system prompt 时回收。
+5. **housekeeping（已处理）**：cli.ts 尾部约 850 行运行日志（victim 修复 + 拒绝测试）外迁到 `spike/logs/d3-runs.log`，入口文件回到 ~60 行；日志作为标本保留（章节叙事素材），延续 D2 d1-* 冻结标本的规矩。入口文件保持"活"、标本另置 `spike/logs/`（D4 起 `d4-runs.log` 等同处归档）。
 
 ## D4（06-14）compaction（全书最重，单独一天）
 
-### 坑清单
+> 今日节奏：上午先做 ch08 章前对谈 + AI 查证（compaction 现状/API 事实），手写 spike 与坑清单随后补。下面「速查」「对谈记要」「结构决策」为 AI 产出（仿 D1 协议速查体例）；「坑清单」留作者动手后填。
+
+### 查证：compaction 速查（AI 查证 @2026-06-14，来源见文末）
+
+**窗口与计价（教学模型 Haiku 4.5）**
+
+- 上下文窗口 **200k** token（1M 窗那批是 Opus 4.6+/Sonnet 4.6/Fable·Mythos 5；Haiku 是 200k）
+- prompt caching：缓存写 $1.25/MTok（5min）或 2x（1h），缓存读 $0.10/MTok（0.1x），最低可缓存 1024 token；usage 多出 `cache_creation_input_tokens` / `cache_read_input_tokens` 两字段
+- count_tokens 端点（`messages.count_tokens`）：免费、独立限流、返回 `{input_tokens}`，是估算；可在发送前预判
+- 溢出行为（4.5+）：input + max_tokens 超窗**不再 400**，而是放进、生成撞顶后 `stop_reason: "model_context_window_exceeded"`（旧模型才是校验报错，需 beta header 切换）
+- Haiku 4.5 自带 context awareness：API 注入 `<budget:token_budget>200000</budget>`，每次 tool call 后追 `<system_warning>Token usage: X/200000</system_warning>`——模型知道预算，但裁剪历史仍是客户端的活
+
+**官方服务端 compaction（参照物，beta header `compact-2026-01-12`）**
+
+- 形态：`context_management={"edits":[{"type":"compact_20260112"}]}`；服务器自己判阈值 → 内部采样总结 → 回一个 `compaction` block → 自动丢弃该 block 之前的内容；客户端只需把响应 append 回去
+- **支持模型：Fable 5 / Mythos 5 / Mythos Preview / Opus 4.8·4.7·4.6 / Sonnet 4.6——不含 Haiku 4.5、不含更老型号。** ⇒ 教学模型上无官方开关，只能手写（与 SDK Tool Runner 同母题：官方已内置、我们偏要手写以看懂它替你做了什么）
+- 参数：`trigger`（默认 150k token，下限 50k）/ `pause_after_compaction`（默认 false；触发后以 `stop_reason:"compaction"` 暂停，让你在续跑前插入"保留最近 N 条逐字"等内容，官方示例保留最近 3 条）/ `instructions`（自定义总结 prompt，**整体替换**默认而非追加）
+- 默认总结 prompt（可作手写版骨架）：“…write a summary of the transcript… Write down anything that would be helpful, including the state, next steps, learnings etc. You must wrap your summary in a `<summary></summary>` block.”
+- 记账坑：压缩那次采样**不计入**顶层 `usage.input/output_tokens`，另放 `usage.iterations[]`（一条 `type:"compaction"` + 一条 `type:"message"`）；算总消耗得自己 sum iterations ⇒ **手写版的 usage 累计也必须把总结调用算进去，否则少账**
+- 两个官方限制（手写也会撞）：① 总结只能用同模型（无法换更便宜的）；② **带 tools 时总结步可能误去调工具、回 `content:null` 空总结**——必须在 prompt 里硬说"只出文本、别调工具"。我们的 agent 永远带 tools，此坑必中
+- 与 caching：`cache_control` 断点放 **system 末尾**，compaction 改对话前缀时 system 缓存仍命中，只有新 summary 需重写
+- count_tokens 会"应用"已有 compaction block 但**不触发**新压缩，返回 `input_tokens`（生效后）+ `context_management.original_input_tokens`
+
+**上下文管理全景（compaction 只是一格，ch08 取舍用）**
+
+- 减量：大输出截断（进历史前 head/tail + `[truncated N]`，最便宜第一道防线）/ context editing 的 tool-result clearing（直接删老 tool_result，编码 agent ROI 常高于总结）/ compaction（总结老对话）
+- 减成本：prompt caching（不减量、减重发的钱）
+- 挪走：memory/落盘 + 多会话（CLAUDE.md 式，ch06）/ 子 agent 隔离（ch10）
+- 认知层：count_tokens·usage·context awareness；context rot（窗口越满越蠢，"放什么"比"放多少"更重要；tool 定义本身也吃 token，见 D1 坑 8）
+
+### 章前对谈记要（ch08 设计决策 + 理由 = 正文「为什么」素材）
+
+用"为什么"能收敛的（原理即正文）：
+
+1. **触发信号** = 默认用上一轮 `usage.input_tokens`（免费、已在手；滞后一轮无妨，因为本就留头寸触发、不去贴 200k）；要"发送前预判"才上 count_tokens
+2. **阈值** = demo 调很低（同一条代码路径、3 轮就触发、几分钱，且能让"summary 再被 summary"的保真损失现形）；但设计按"窗口比例 / 窗口−头寸"，因为同一 agent 在 Haiku(200k) 与 Sonnet(1M) 该压的点不同。低阈值唯一遮住的是 **headroom**——正文单独补：压缩动作本身要吃窗口，触发太晚连压缩那一轮都装不下（Haiku 上表现为 `model_context_window_exceeded`，不报 400）
+3. **总结调用不带 tools**（或硬说只出文本）= 文档记录的失败模式，必须项非口味
+4. **不焊进 runAgent，走 opts hook**（仿 onToolCall）= 回收 D3 那笔"read_file 焊死在通用 loop"的债，且 D5 子 agent 复用 loop 时各用各的策略
+5. **保留最近 N 逐字 + 压中间，边界落在干净配对处** = why 是 D1/D2 的配对协议（tool_use 后必紧跟配对 tool_result）+ 近因最相关；N 是旋钮。压完 messages 仍须 user 起头、配对完整，否则下一请求 400 ——**头号坑**
+6. **usage 记账纳入总结调用 + cache 字段** = 否则"账单下降"里程碑测不准
+
+属作者口味（导师铁律，AI 只摆利弊不代笔）：summary 以什么角色注入、N 取几、summary prompt 措辞、caching 的 TTL 选择。
+
+### 跨章结构决策（本日对谈拍板，已落 OUTLINE.md）
+
+1. **交互式 CLI 尽早引入 → ch01**。理由：与 AI 对话是 chat/agent 两个时代的主流交互，越早端上这熟悉形象、读者心智负担越小；且它是**外层人机壳**、非 agent 内核（两个 loop：外层 REPL / 内层 runAgent，全书讲内层），单独隔离一次后面 agent 章节就不被它弄脏。
+2. **ch01 用无状态版**：先一次干净调用，再套对话循环，但不带跨轮状态——模型只答当前这句，当场演示"大模型无状态"，把"为什么要重发全部历史"的引子留给 ch03。ch03 用"append 数组 + 重发"同一原语，一招同解对话记忆与 agent loop（客户端从此有状态，模型仍无状态）。
+3. **流式挪到 ch14**（默认；如需可提前到 ch05 长输出难受之前）：ch01 起一律非流式，流式传输 + 流式 markdown 在 ch14 一起做（显式安排，不让它成为下一个被隐式跳过的孤儿）。精确措辞提醒：prompt caching ≠ 模型记住了，只是重发更便宜，模型仍只看见你这次发的——守住 ch01 无状态结论 + 给 ch08 caching 埋准确伏笔。
+4. **prompt caching 进 ch08 正文**（非练习）：因它与 compaction 咬合，拆开讲不清。
+
+### 坑清单（手写 spike 后填）
 
 -
 
@@ -182,3 +266,10 @@ fetch 半边（types.ts + agent-fetch.ts 移植 + 二次验收）≈ 再半个�
 - https://platform.claude.com/docs/en/about-claude/pricing
 - https://platform.claude.com/docs/en/about-claude/models/overview
 - https://registry.npmjs.org/@anthropic-ai/sdk/latest
+
+**查证来源（2026-06-14 抓取，D4 compaction）**
+
+- https://platform.claude.com/docs/en/build-with-claude/compaction
+- https://platform.claude.com/docs/en/build-with-claude/context-windows
+- https://platform.claude.com/docs/en/build-with-claude/token-counting
+- https://platform.claude.com/docs/en/about-claude/pricing
