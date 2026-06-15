@@ -221,9 +221,33 @@ SDK 版 + fetch 版均完成，权限逻辑一致。tsc 绿灯。核心机制验
 3. **流式挪到 ch14**（默认；如需可提前到 ch05 长输出难受之前）：ch01 起一律非流式，流式传输 + 流式 markdown 在 ch14 一起做（显式安排，不让它成为下一个被隐式跳过的孤儿）。精确措辞提醒：prompt caching ≠ 模型记住了，只是重发更便宜，模型仍只看见你这次发的——守住 ch01 无状态结论 + 给 ch08 caching 埋准确伏笔。
 4. **prompt caching 进 ch08 正文**（非练习）：因它与 compaction 咬合，拆开讲不清。
 
-### 坑清单（手写 spike 后填）
+### 坑清单（hands-on，06-16）
 
--
+1. **阈值 thrash——压缩后"地板"顶穿阈值、每轮重压（今日最值钱）。** 补上真 summary 后，压完的上下文（summary + 保留 4 条 + system + tools ≈ 2200）**始终高于** 2000 阈值，turn 4 起每轮都触发。对比占位 summary 时能掉到 1944（<2000）就停手——真 summary 更长，把"地板"顶到了阈值之上。**后果是反的**：每次压 = 一次额外 summary 调用（上千 token + 延迟），compaction 从省钱变每轮烧钱，把"账单下降"做反。根因：**单一阈值不够，触发点与压缩后地板之间必须留 gap**。spike 解法：阈值 → 3072（> 地板 ~2200，留 margin）。根治（留 ch08 正文）：高低水位（超 T_high 压、压到 T_low 以下）/ 冷却（压后 K 轮不再查）/ 压低地板（keepLast 减、summary max_tokens 砍）。
+2. **压缩丢"进度/待办"致模型重枚举。** 一次 run 里压掉了"还剩哪些文件没读"，模型转去 `bash ls` 重列目录（又撞 D3 没有 list_files 的坑）。"压掉什么"的反面课：summary prompt 必须保住当前进度/待办，否则 agent 原地打转。
+3. **（印证解法）边界配对扛住。** findCompactCutIndex 把切点吸到合法边界 + assertValidMessages 双向校验 + placeholder summary 预验证；多次压缩**零 400**。头号坑解法成立。
+4. **（印证）总结调用不传 tools = 彻底绕开 `content:null`。** 无 tools 可调、只能出文本，比官方服务端版（被迫带 tools、需 instructions 防）更干净。
+5. **（印证）abort 穿透进总结调用。** turn 8 的 Ctrl-C 正落在 `summarizeMessages`，signal 一路到位、无孤儿。
+6. **（清掉一个顾虑）summarize 请求"连续两条 user + 带 tool 块却不传 tools"，API 收。** prefix 末尾 user(tool_result) 又接一条 user("Summarize…")——理论可疑，实测无报错。
+
+### D4 收口（06-16）
+
+- **阈值 spike 取 3072**（给地板留 margin、消 thrash）；根治方案（高低水位等）留 ch08「阈值是一门学问」那一节。
+- **fetch 版 compaction 不写**（D4 收尾决定）。双版并行纪律在 D4 让步——记入 D7 fetch-vs-SDK 账：fetch 侧从 D4 起落后于 SDK，"是否值得把两份 loop 扛到 D6/正文"本身成了 D7 的决策数据（呼应 D3 review 补记 #2 的维护税）。
+- **「实际应用阈值大就不会 thrash」答疑（= ch08 素材）：大体对，但机制不消失。** thrash 本质是"压缩后地板 ≥ 触发阈值"；大窗口+大阈值时地板通常只是阈值的零头、gap 宽、不触发，所以日常看不到。但它**会回来**：只要保留的"最近 N 条"里混进单个大块（读了个 100k 大文件、或巨型 tool 输出），地板就能再顶过阈值，哪怕阈值 150k。所以真实系统不靠"阈值大就没事"，而是另用**大输出截断**（封顶单条 tool 结果）+ **高低水位**（压到保证 margin 的低水位）兜。**spike 的小数字是显微镜**：把真实现象放大到三轮就可见；生产只是常驻在 gap 宽的区间，直到一个胖 tool 结果压垮它。
+- **ch08 倾向拆分**（回应待拍板「ch08 是否拆分」）：光 compaction（触发 + 边界算法 + 三做法 + 阈值学问 + caching 咬合）就够一整章。缝 = 【上下文基础：token 计数/预算/截断/context rot】+【compaction：算法那坨】。倾向拆，M1 期间最终定（拆会顺移后续章号）。
+
+### Review 补记（06-16，收尾扫一遍揪出；作者定：不改，只暴露问题、留 ch08/D5 素材）
+
+1. **原始任务没锚定（最该记的一条）。** `compactedMessages = [summary, ...最近 4 条]`——原始用户任务 `messages[0]` 落进被总结的 prefix，第一次压缩后只以"摘要里一句"存在，之后"摘要的摘要"逐步稀释，长任务里 agent 会忘掉最初目标（run1 turn8 `bash ls` 重新找方向即前兆）。分段保留标准解：`messages[0]`（原始任务）当锚点**逐字保留**、只压中间。→ ch08「分段保留」正文。**（06-16 实证：run F 压完丢了原始问题、结尾反问"请问主要问题是什么？"——此坑当场现形，详见本节 #2。）**
+2. **needle 端到端已验（06-16，7 次 run）：结果不稳定 / 非确定，且失败模式出人意料。** 早期 A/B 跑完但没触发压缩（无压缩基线、答对）；C/D/E 触发了压缩但都被 Ctrl-C；**最后两次 F、G 才是 3072 代码 + 跑完（`end_turn`）+ 真压缩**（turn 5、8，config.ts 被压入 summary）：
+   - **G 完整答对**：`MAX_RETRIES=7` + broker 第 8 次关 socket + 2025-02-14 事故，全在。
+   - **F 却"错"了——但不是丢了 needle 事实，是丢了原始问题。** 文件职责表里 `MAX_RETRIES=7` 其实还在，可模型忘了自己被问的是什么，结尾反问"请问主要问题是什么？"。
+   - **同代码、同 prompt、一错一对**：压缩保留什么是随机的；而 F 丢的恰是**任务/问题本身（= 本节 #1 锚点缺失的活体实证）**，不是事实细节。结论：靠 summary 偶然保住关键信息**不可靠**——必须 ①锚定原始任务，②别让 must-keep 事实只活在 summary 里。这条非确定性本身就是 ch08「compaction 是有损 + 随机」的头牌素材。附：thrash 不止烧钱，run E 五连压把含 needle 的历史"摘要再摘要"5 次、保真加速衰减。
+3. **summary 可能被 `max_tokens`(1024) 截断且没察觉。** 只 guard 了空 summary，没查 `stop_reason=max_tokens`；prefix 大时摘要可能是半句话照样塞回。→ ch08 提：查截断或给摘要更大预算。
+4. **`let messages = opts.messages` 半可变（D5 会咬）。** 压缩前 `push` 改的是调用方数组、压缩后 reassign 改指向新数组——"有时改入参、有时不改"。cli 用返回值没事，子 agent 复用 loop 时易埋雷。解：进来先 copy、全程不碰 `opts.messages`，或注释钉死"调用方用返回的 messages"。（作者 line 38 自标"不确定对不对奥"——`let` 本身对，隐患在这。）
+5. **小瑕疵：** line 68 注释 stale（写"2000"、实际 3072）；3072 是夹具专用 margin、非通用解（大 tool_result 仍会再 thrash）。summary 用 `user` 角色是**被动正确**（suffix[0] 被吸成 assistant，故 summary 必 user 才 alternate）；官方服务端用 assistant 的 compaction block，ch08 可对比。
+6. **扫过、确实没事（存档）：** abort 落压缩中途——`compact` 抛出前未 reassign，cli catch 后干净退、无残骸（run 实证）；usage 记账不重不漏、省下的如实反映；边界兜底 `return 1` 合法但依赖"`messages[1]` 恒为 assistant"的隐含前提（改结构留神）；主数组无连续 user、空摘要已 guard、`disable_parallel_tool_use` 与 for-loop 不冲突。
 
 ## D5（06-15）子 agent + todo（重点验证 loop 可被复用）
 

@@ -41,6 +41,7 @@ try {
                 content: content,
             },
         ],
+        maxTurns: 20,
         tools,
         signal: controller.signal,
         system: systemPrompt,
@@ -50,6 +51,8 @@ try {
     console.log(result.agentStopReason);
     console.log(result.usage);
 } catch (error) {
+    // 记得打印错误。
+    console.error(error);
     if (isAbortError(error)) {
         process.exit(130)
     }
