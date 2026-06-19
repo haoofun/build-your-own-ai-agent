@@ -1,11 +1,11 @@
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { readFile, writeFile } from "fs/promises";
 import { promisify } from "util";
 // sdk 版本，直接使用 sdk 的 Tool 类型
-// import { Tool } from "@anthropic-ai/sdk/resources";
+import { Tool } from "@anthropic-ai/sdk/resources";
 
 // fetch 版本，自定义类型
-import type { ToolDefinition } from "./types.ts";
+// import type { ToolDefinition } from "./types.ts";
 
 type TooolInput = Record<string, unknown>
 
@@ -31,6 +31,7 @@ export function isAbortError(error: unknown) {
 
 // promisify(exec) 在非零 exit 时直接 reject
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // 取消信号是后来加的
 export async function readFileTool(input: unknown, signal?: AbortSignal): Promise<string>{
@@ -109,6 +110,47 @@ export async function bashTool(input: unknown, signal?: AbortSignal): Promise<st
   }
 }
 
+export async function grepTool(input: unknown, signal?: AbortSignal): Promise<string> {
+  const arg = asObject(input);
+  const pattern = stringField(arg, "pattern");
+  const path = stringField(arg, "path");
+
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      "grep",
+      ["-RIn", "-I", "--", pattern, path],
+      {
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+        signal,
+      }
+    );
+
+    return stdout || stderr || "No matches found.";
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) {
+      throw error;
+    }
+
+    const err = error as {
+      code?: number | string;
+      stdout?: string;
+      stderr?: string;
+      message?: string;
+    };
+
+    if (err.code === 1) {
+      return `No matches found for ${JSON.stringify(pattern)} in ${path}.`;
+    }
+
+    return formatCommandResult(
+      err.code ?? "unknown",
+      err.stdout ?? "",
+      err.stderr ?? err.message ?? ""
+    );
+  }
+}
+
 function formatCommandResult(
   code: number | string,
   stdout: string,
@@ -125,7 +167,7 @@ function formatCommandResult(
   ].join("\n");
 }
 
-export const tools: ToolDefinition[] = [
+export const tools: Tool[] = [
   // sdk 版本
   // export const tools: Tool[] = [
   {
@@ -196,6 +238,24 @@ export const tools: ToolDefinition[] = [
       required: ["command"],
     },
   },
+  {
+    name: "grep",
+    description: "Search files for a text pattern. Read-only. Returns matching file paths, line numbers, and lines.",
+    input_schema: {
+      type: "object",
+      properties: {
+        pattern: {
+          type: "string",
+          description: "Text pattern to search for",
+        },
+        path: {
+          type: "string",
+          description: "File or directory path to search in",
+        },
+      },
+      required: ["pattern", "path"],
+    },
+  },
 ];
 
 
@@ -214,6 +274,10 @@ export async function runTool(name: string, input: unknown, signal?: AbortSignal
 
   if (name === "bash") {
     return await bashTool(input, signal);
+  }
+
+  if (name === "grep") {
+    return await grepTool(input, signal);
   }
 
   throw new Error(`未知工具: ${name}`);

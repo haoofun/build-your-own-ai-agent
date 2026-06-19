@@ -1,7 +1,9 @@
 import { runAgent } from "./agent-sdk.ts";
 
 // import { runAgent } from "./agent-fetch.ts";
-import { isAbortError, tools } from "./tools.ts";
+import { isAbortError, runTool as runBaseTool, tools } from "./tools.ts";
+import { taskToolDefinition, runTaskTool } from "./subagent.ts";
+import type { Tool } from "@anthropic-ai/sdk/resources";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -31,6 +33,82 @@ Do not guess when information can be obtained from tools.
 Use available tools to inspect files, code, configuration, and environment before making assumptions.
 `
 
+const todoWriteToolDefinition: Tool = {
+  name: "todo_write",
+  description: "Replace the current todo list for this agent run.",
+  input_schema: {
+    type: "object",
+    properties: {
+      todos: {
+        type: "array",
+        description: "Todo items with content, status, and activeForm",
+      },
+    },
+    required: ["todos"],
+  },
+};
+
+type Todo = {
+  content: string;
+  status: string;
+  activeForm: string;
+};
+
+const todoState: { todos: Todo[] } = { todos: [] };
+
+function todoWrite(input: unknown): string {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("todo_write 参数必须是 object");
+  }
+
+  const todos = (input as Record<string, unknown>).todos;
+  if (!Array.isArray(todos)) {
+    throw new Error("todos 必须是数组");
+  }
+
+  todoState.todos = todos.map((item) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("todo item 必须是 object");
+    }
+
+    const obj = item as Record<string, unknown>;
+
+    if (
+      typeof obj.content !== "string" ||
+      typeof obj.status !== "string" ||
+      typeof obj.activeForm !== "string"
+    ) {
+      throw new Error("todo item 需要 content/status/activeForm 字符串字段");
+    }
+
+    return {
+      content: obj.content,
+      status: obj.status,
+      activeForm: obj.activeForm,
+    };
+  });
+
+  return `Todo list updated:\n${JSON.stringify(todoState.todos, null, 2)}`;
+}
+
+const mainTools: Tool[] = [
+  ...tools,
+  taskToolDefinition,
+  todoWriteToolDefinition,
+];
+
+async function mainRunTool(name: string, input: unknown, signal?: AbortSignal): Promise<string> {
+  if (name === "task") {
+    return await runTaskTool(input, signal);
+  }
+
+  if (name === "todo_write") {
+    return todoWrite(input);
+  }
+
+  return await runBaseTool(name, input, signal);
+}
+
 const content: string = process.argv[2]
 
 try {
@@ -42,7 +120,8 @@ try {
             },
         ],
         maxTurns: 20,
-        tools,
+        tools: mainTools,
+        runTool: mainRunTool,
         signal: controller.signal,
         system: systemPrompt,
         onToolCall: confirmToolCall,

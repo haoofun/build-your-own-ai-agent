@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MessageParam, Tool, ContentBlockParam, ToolResultBlockParam, ToolUseBlock, StopReason } from "@anthropic-ai/sdk/resources";
-import { runTool, isAbortError } from "./tools.ts";
+
+export function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
 
 type RunAgentOptions = {
     model?: string,
@@ -18,6 +21,8 @@ type RunAgentOptions = {
     // d3, 加入系统提示词，由 Environment Info 和 Doing task组成
     system?: string
     onToolCall?: (toolName: string, input: unknown) => Promise<boolean>;
+    // 解耦工具，工具集隔离
+    runTool: (name: string, input: unknown, signal?: AbortSignal) => Promise<string>
 }
 
 type AgentStopReason = StopReason | "max_turns"
@@ -102,7 +107,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
             }
             try {
                 // 加上取消信号量
-                const result = await runTool(toolUse.name, toolUse.input, signal)
+                const result = await opts.runTool(toolUse.name, toolUse.input, signal)
                 tool_result.content = result
             } catch (error) {
                 if (signal?.aborted || isAbortError(error)) {

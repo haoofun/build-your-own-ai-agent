@@ -249,11 +249,53 @@ SDK 版 + fetch 版均完成，权限逻辑一致。tsc 绿灯。核心机制验
 5. **小瑕疵：** line 68 注释 stale（写"2000"、实际 3072）；3072 是夹具专用 margin、非通用解（大 tool_result 仍会再 thrash）。summary 用 `user` 角色是**被动正确**（suffix[0] 被吸成 assistant，故 summary 必 user 才 alternate）；官方服务端用 assistant 的 compaction block，ch08 可对比。
 6. **扫过、确实没事（存档）：** abort 落压缩中途——`compact` 抛出前未 reassign，cli catch 后干净退、无残骸（run 实证）；usage 记账不重不漏、省下的如实反映；边界兜底 `return 1` 合法但依赖"`messages[1]` 恒为 assistant"的隐含前提（改结构留神）；主数组无连续 user、空摘要已 guard、`disable_parallel_tool_use` 与 for-loop 不冲突。
 
-## D5（06-15）子 agent + todo（重点验证 loop 可被复用）
+## D5（06-15；hands-on 实落 06-19）子 agent + todo（重点验证 loop 可被复用）
 
-### 坑清单
+### 查证：子 agent / todo 速查（AI 查证 @2026-06-19，来源见文末）
 
--
+**子 agent**（Agent SDK `agents` 参数 + Agent 工具 = 我们要手写的内置版，延续「官方已内置、偏要手写」母题；punchline：它压根不是新机制，就是 `runAgent` 再调一次）
+
+- 子上下文**全新**，唯一父→子通道 = Agent 工具的 **prompt 字符串**（路径/线索/报错都得塞进去）；子拿不到父的历史/工具结果/system prompt。父收**子的最后一条消息逐字**当 tool_result。
+- 工具限制：省略 `tools`=继承全部；指定=仅这些。只读搭配 = Read/Grep/Glob。
+- **子 agent 不能再生子 agent，别把 Agent 放进子的 tools**——官方防 fork-bomb 做法，深度锁 1。
+- 命名：工具在 **Claude Code v2.1.63 从 `Task` 改名 `Agent`**；SDK 的 tool_use 发 `Agent`，但 `system:init` 列表 + `permission_denials` 仍 `Task`。spike 用 `task`（最广为人知、仍在 init 列表），正文可对照。
+- 内置常用三型：**Explore**（只读搜索、默认 Haiku、快省）/ **General-purpose**（读+改、默认）/ **Plan**（plan 模式只读研究、继承主模型）。对照 **Codex CLI** 的 `default`/`worker`/`explorer`。两边收敛同一轴：**只读 explorer vs 读写 worker**——ch10 canonical 第一个子 agent 就是 explorer。
+
+**todo（TodoWrite）**：入参 `{ todos:[{content,status,activeForm}] }`，status=`pending/in_progress/completed`；生命周期 created→in_progress→completed→组完移除；SDK 自动用于 3+ 步任务。代码 trivial，价值在「逼模型外化计划」+ **todo×compaction**（能扛压缩的 todo = D4 坑1/坑2「压缩丢原始任务/进度」的结构性解）。
+
+**权限**（ch07 素材，**非 D5 范围**）：四套机制，处理顺序 `PreToolUse Hook → Deny → Allow → Ask → 权限模式 → canUseTool → PostToolUse Hook`。新 **auto mode 叠一个 LLM 分类器**（动机：用户对 93% 弹窗都点同意）：静默 approve / deny（回 tool error 不弹人）/ 分类器出错 fail-closed 退 ask；覆盖 bash/webfetch/外部目录/MCP/子 agent spawn/项目外编辑，**不**覆盖安全白名单 + 项目内编辑。结构上是分类器/常挂 hook，**不是**有自己 loop 的 Task 子 agent。
+
+### 章前对谈记要（ch10 子 agent + ch11 todo）
+
+1. **核心洞见 = 子 agent 不是新机制，就是 `runAgent` 调 `runAgent`。** 隔离 = 全新 messages 数组 + 受限工具集 + 只回最后一段文本，ch03 已造完。这正是 D2 拿「能否一行不改复用」当判据的理由。
+2. **判据真正测的是工具层解耦，不是 loop 形状。** loop 早是纯函数（D2 ✓），但 `import runTool` + 焊 `read_file` 是耦合点。一招解：**工具执行经 `opts.runTool` 注入、接线挪顶层** → 杀循环依赖 + 免审跟工具走 + todo 有 per-run 家 + 子 agent 拿受限工具集 + 防递归一行（registry 不放 task）。
+3. **权限（属作者口味，D5 拍板）：子 agent 不传 `onToolCall`（自主），安全来自只读工具集（结构性）而非策略。** 复杂权限（规则/模式/LLM 分类器）整章留 ch07——D5 故意一行权限不写。
+4. 子 agent 工具集：只读 explorer 先行（read_file+grep），worker 后面；补 grep 顺手还 D3 坑2。
+5. todo 状态 per-run，不放模块全局。
+
+### 坑清单（hands-on，06-19；完整 e2e 见 logs/d5-runs.log）
+
+1. **隔离成功 ≠ 任务成功（今日最值钱）。** 主上下文隔离实证通过——explorer `26639` input/`1745` output 的全部调查塌成主数组里**一条 tool_result 字符串**，主 messages 只剩「问题 → task 结果 → 答复」，没有被读进来的文件。**但 explorer 信心满满答错了**：把「compaction 在哪个函数」答成「这是 Anthropic SDK 项目、compaction 是 API 上下文压缩、相关在 `bloat/README.md` 和 node_modules」——根本没找到真正实现它的 `agent-sdk.ts`。父 agent **无从知错**，只收到一段流畅字符串照单全收。→ ch10「**子 agent 结果不可信、需校验**」+ ch15 eval 的必要性；D4 needle 非确定性的 D5 续集。
+2. **级联根因：compaction 在子 agent 内部触发、吃掉了它的搜索结果。** explorer turn 2 一个工具结果把 input 顶到 `7977`（>3072）→ **子 loop 复用了主 loop 的 compaction**、就地压缩 → explorer 之后「**根据之前的对话总结**」作答（log 原话），真实 grep/read 结果已被摘进 summary、关键发现（agent-sdk.ts）丢失 → 自信错答。**复用 loop = 连 compaction 一起复用**，D4 的「压缩有损 + 锚点缺失」在子 agent 里二次放大。几乎确定是宽 grep 撞 node_modules（坑5）喂出的大输出，但**子 agent 内部消息已被隔离吞掉、日志无法直接确认**——隔离让子 agent 的失败**更难 debug**，本身又是一笔账。
+3. **usage 数值漏，量化坐实。** 父 `usage` 打印 `{2603, 409}`，但 explorer 实烧 `26639/1745`（结果头部可见、≈父的 10x）**全数从父账消失**。账单/eval 成本表会少算近 90%。同 D4「总结调用不计入 usage」科。
+4. **可观测混流实锤。** 日志里 `[turn 1]`、`[turn 2]` 主与子**各出现两次**，仅靠 input_tokens 大小猜谁是谁。复用 loop 复用了它的 `console.log`，子轮次与父轮次同流。
+5. **grep 无 node_modules 排除 + 1MB maxBuffer。** 模型宽搜（`grep -R . `）撞 node_modules → 大输出（喂坑2）或超 maxBuffer 返回 `exit code: unknown`。spike 能用（搜子目录），连 ch08 大输出截断。
+6. **todo 是模块全局（被动安全）。** `const todoState` 在 cli.ts 模块级——**今天没串只因 explorer 工具集没给 todo_write**；给了或一进程跑两 agent 即共用同一份。正是上一轮预警的 per-run 陷阱、与 `let messages=opts.messages` 同科。
+7. **（未测）abort 穿透进子 loop。** 本 run 干净 end_turn、没 Ctrl-C；signal 已穿到子 `runAgent`（代码核过），但实证留补。
+
+### D5 收口（06-19）
+
+- **判据 PASS。** 解耦后是**纯 DAG**（agent-sdk 不 import tools、tools 不 import agent-sdk，环根本不存在、非「靠入口拆分容忍」）；tsc 绿；主上下文隔离 e2e 实证（坑1 前半）。D2「loop 可一行不改复用」的赌注成立——子 agent 确实只是 runAgent 再调一次。
+- **但 e2e 的大收获是反面：隔离是结构成功、任务失败。** sub-agent 内 compaction 摘没搜索结果、返回自信错答，父无从校验。这把 ch10 从「隔离很香」拉回「隔离不免费、子 agent 结果要验」，也实证了 ch15 eval 的必要。
+- **fetch 版子 agent/todo 不写**（同 D4，计 D7 账：fetch 自 D4 起持续落后 SDK）。
+- **待修（留正文/后续，非 spike）：** usage 数值上卷父账；todo 改 per-run；免审跟工具走（grep/todo_write 现被误问 = ch07 焊死债现形）；grep 加 node_modules 排除 + 输出截断。
+
+### Review 补记（06-19）
+
+1. **做对的（存档）：** 注入 `runTool` 彻底杀环（DAG）；explorer 双层只读（受限 `tools` + `runExplorerTool` 越界即 throw）；signal 穿到子 loop；子 agent 自有 `maxTurns=6` 预算；工具集不含 task（深度锁）；`lastAssistantText` 跳过末尾 user(tool_result) 兜住 max_turns；grep 用 `execFile`（实测路径注入被当文件名、不过 shell）。
+2. **`tools.ts:5` `import { Tool }` 值式导入类型。** tsx 能消、tsc 过，但与 cli/subagent 的 `import type` 不一致，且正是它卡住 node 原生 strip-types 执行（沙盒只能靠 tsx，而 tsx 的 esbuild 是本机 darwin 二进制、沙盒 linux 跑不了 → **e2e 必须本机跑**）。改 `import type` 顺手。
+3. **`isAbortError` 现两份**（agent-sdk + tools 各一），解耦的无害代价。
+4. **`grep -RIn -I` 的 `-I` 重复**（`-RIn` 已含 I），无害。
 
 ## D6（06-16）MCP client（第二重）
 
@@ -297,3 +339,11 @@ SDK 版 + fetch 版均完成，权限逻辑一致。tsc 绿灯。核心机制验
 - https://platform.claude.com/docs/en/build-with-claude/context-windows
 - https://platform.claude.com/docs/en/build-with-claude/token-counting
 - https://platform.claude.com/docs/en/about-claude/pricing
+
+**查证来源（2026-06-19 抓取，D5 子 agent / todo / 权限）**
+
+- https://platform.claude.com/docs/en/agent-sdk/subagents
+- https://platform.claude.com/docs/en/agent-sdk/todo-tracking
+- https://code.claude.com/docs/en/agent-sdk/permissions
+- https://developers.openai.com/codex/subagents
+- https://anthropic.com/engineering/claude-code-auto-mode
