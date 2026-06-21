@@ -1,0 +1,81 @@
+➜  spike git:(spike) ✗ npx tsx cli.ts \
+  "使用 Playwright MCP 工具打开 https://example.com，并告诉我页面标题"
+[mcp] 已连接 Playwright，协议版本 2025-06-18
+[turn 1] input_tokens=5258, output_tokens=87, messages=1
+
+工具请求: mcp__playwright__browser_navigate
+{ url: 'https://example.com' }
+允许执行吗？(y/N) y
+[compact turn 1] before messages=3
+[compact turn 1] after messages=3
+[turn 2] input_tokens=5626, output_tokens=98, messages=3
+[
+  {
+    role: 'user',
+    content: 'Earlier conversation summary:\n' +
+      '# 对话总结\n' +
+      '\n' +
+      '用户要求使用 Playwright MCP 工具打开 https://example.com 并获取页面标题。\n' +
+      '\n' +
+      '但根据我的系统指示，我被限制为**只能返回文本，不能调用任何工具**。因此我无法执行此任务。\n' +
+      '\n' +
+      '## 当前状态\n' +
+      '- 任务：打开网页并获取标题\n' +
+      '- 目标网址：https://example.com\n' +
+      '- 限制：我的角色设定为仅总结对话，不能调用 Playwright 或其他工具\n' +
+      '- 结果：无法完成请求的操作\n' +
+      '\n' +
+      '## 建议\n' +
+      '如果需要执行此任务，应该由有权限调用 Playwright MCP 工具的代理来处理。'
+  },
+  {
+    role: 'assistant',
+    content: [
+      {
+        type: 'text',
+        text: '我来帮你使用 Playwright MCP 工具打开 https://example.com 并获取页面标题。'
+      },
+      {
+        type: 'tool_use',
+        id: 'toolu_01DSQBZ23kL4RBreo2eHygGx',
+        name: 'mcp__playwright__browser_navigate',
+        input: { url: 'https://example.com' },
+        caller: { type: 'direct' }
+      }
+    ]
+  },
+  {
+    role: 'user',
+    content: [
+      {
+        tool_use_id: 'toolu_01DSQBZ23kL4RBreo2eHygGx',
+        type: 'tool_result',
+        content: '### Ran Playwright code\n' +
+          '```js\n' +
+          "await page.goto('https://example.com');\n" +
+          '```\n' +
+          '### Page\n' +
+          '- Page URL: https://example.com/\n' +
+          '- Page Title: Example Domain\n' +
+          '### Snapshot\n' +
+          '- [Snapshot](.playwright-mcp/page-2026-06-20T14-08-32-764Z.yml)'
+      }
+    ]
+  },
+  {
+    role: 'assistant',
+    content: [
+      {
+        type: 'text',
+        text: '完成！我已成功打开 https://example.com，页面信息如下：\n' +
+          '\n' +
+          '- **页面 URL**: https://example.com/\n' +
+          '- **页面标题**: Example Domain\n' +
+          '\n' +
+          '页面已加载完成。如果你需要进行其他操作（如截图、获取页面内容、点击按钮等），我可以继续帮助。'
+      }
+    ]
+  }
+]
+end_turn
+{ inputTokens: 10982, outputTokens: 393 }
