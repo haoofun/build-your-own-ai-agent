@@ -36,8 +36,8 @@
 为什么 agent 没有魔法；最终成品演示（GIF）；环境准备（Node 22+、API key、~$5 预算说明）。
 
 **01 一次 API 调用**
-messages 与角色、system prompt、流式输出（SSE）。
-→ 里程碑：一个流式输出的聊天 CLI。
+messages 与角色、system prompt；先打通一次干净的调用（request→response），再给它套一个**无状态对话循环**（读一句→发这一句→打印→再读）——尽早把"在终端里和 AI 对话"这个读者最熟悉的形象端上来，降低心智负担。这一版**刻意不带跨轮状态**：模型只就当前这句作答，当场暴露"大模型是无状态的、记不住上一句"，为 ch03"为什么要把全部历史 message 发回去"埋下引子。顺带点明**两个 loop 的边界**：外层是人机对话壳（本章）、内层才是 agent loop（ch03），全书讲的是内层。本章不做流式（挪到 ch14），终点是对话循环本身。
+→ 里程碑：一个**会失忆**的聊天 CLI——连问"我叫什么"都答不出，亲手制造 ch03 要解的悬念。
 
 ### 第一部分 · 核心循环（agent 的本质）
 
@@ -46,8 +46,8 @@ messages 与角色、system prompt、流式输出（SSE）。
 → 里程碑：能查时间、算算术的助手。
 
 **03 Agent Loop：循环直到完成**
-loop 的终止条件；messages 数组的增长方式；实现 `read_file` 工具。
-→ 里程碑：能回答"这个项目是干嘛的"的代码问答 agent。
+loop 的终止条件；messages 数组的增长方式；实现 `read_file` 工具。这里用**同一个动作**——往 messages 数组 append、再把整个数组发回去——一次解决两件事：给对话补上记忆（治好 ch01 的失忆），也驱动 agent loop（append tool_use、再 append tool_result、重发）。客户端从此**有状态**，模型仍无状态。
+→ 里程碑：能回答"这个项目是干嘛的"的代码问答 agent，且记得住你上一句说了什么。
 
 **04 写与改：Write、Edit 与 diff**
 全量写 vs 精确替换；old_string/new_string 的设计权衡；终端里渲染 diff。
@@ -68,8 +68,8 @@ system prompt 的分层设计；注入 cwd、git 状态、目录结构；CLAUDE.
 → 里程碑：agent 不再能悄悄 `rm -rf`。
 
 **08 上下文管理：对抗有限的窗口**
-token 计数与预算；大输出截断策略；历史压缩（compaction）：什么时候压、怎么压、压掉什么；prompt caching 省钱。
-→ 里程碑：长对话不再爆窗口、API 账单下降。
+token 计数与预算（count_tokens / usage）；大输出截断策略；历史压缩（compaction）——**手写**客户端压缩：何时压（按窗口比例留头寸，demo 调低阈值）、怎么压（另起一次**不带 tools** 的总结调用）、压掉什么，以及头号坑——压缩边界不能切断 tool_use/tool_result 配对。官方服务端 compaction（`compact-2026-01-12`）可作参照，但**不支持教学模型 Haiku 4.5**，故只能手写（同 Tool Runner 母题）。prompt caching **进正文**：与 compaction 咬合（`cache_control` 断点放 system 末尾，压缩改前缀时 system 缓存不失效），并把 cache 命中纳入账单观测。
+→ 里程碑：长对话不再爆窗口、API 账单下降（compaction 缩历史 + caching 省重发，usage 看得见）。
 
 **09 健壮性：真实世界的网络与错误**
 限速与指数退避重试；流中断恢复；Ctrl+C 取消正在执行的工具；工具报错如何回传给模型。
@@ -97,7 +97,7 @@ MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，�
 ### 第四部分 · 收尾
 
 **14 终端体验打磨**
-不依赖重型 TUI 框架的渲染：spinner、流式 markdown、工具调用的折叠展示。
+不依赖重型 TUI 框架的渲染：spinner、工具调用的折叠展示；**流式输出（SSE）在此落地**——从 ch01 起一直用非流式（敲一句→等→整段返回），到这里才把流式传输 + 流式 markdown 渲染一起做掉（从 ch01 显式挪来，不让它成为被隐式跳过的孤儿）。
 → 里程碑：前后对比 GIF——流式 markdown、spinner、工具调用折叠；验收标准：长输出不闪烁、不错位。
 
 **15 评测：怎么知道它变好了**
