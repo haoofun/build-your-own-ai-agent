@@ -85,6 +85,8 @@ export default defineConfig({
   },
 
   markdown: {
+    // 浅色面代码块用浅色 shiki 主题，深色模式用深色，与 zinc 阅读主题统一
+    theme: { light: 'github-light', dark: 'github-dark' },
     config(md) {
       // 交互孤岛：::: {.interactive name="组件名"} + 内部静态降级图
       // pandoc 的 fenced_divs 天然识别此写法，电子书端自动降级为图片（见 WRITING.md）
