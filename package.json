@@ -2,7 +2,9 @@
   "name": "build-your-own-ai-agent",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
@@ -13,5 +15,9 @@
     "markdown-it-container": "^4.0.0",
     "vitepress": "^1.6.4",
     "vitepress-plugin-llms": "^1.13.1"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.2.8"
   }
 }
