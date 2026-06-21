@@ -54,7 +54,7 @@ loop 的终止条件；messages 数组的增长方式；实现 `read_file` 工�
 → 里程碑：能修真实 bug 的最小编码 agent。
 
 **05 Bash：让 agent 跑命令**
-子进程、stdout/stderr 捕获、超时与输出截断；agent 跑测试→看报错→改代码→再跑的自我迭代闭环。
+子进程、stdout/stderr 捕获、超时与输出截断；agent 跑测试→看报错→改代码→再跑的自我迭代闭环。长输出现在只能"敲完干等整段返回"——这个难受先记一句，留到第二部分（fetch 毕业转 SDK 后）用流式解决，本部分仍一律非流式。
 → 里程碑：丢给它一个失败的测试，它自己修到通过。
 
 ### 第二部分 · 从玩具到可用
@@ -97,7 +97,7 @@ MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，�
 ### 第四部分 · 收尾
 
 **14 终端体验打磨**
-不依赖重型 TUI 框架的渲染：spinner、工具调用的折叠展示；**流式输出（SSE）在此落地**——从 ch01 起一直用非流式（敲一句→等→整段返回），到这里才把流式传输 + 流式 markdown 渲染一起做掉（从 ch01 显式挪来，不让它成为被隐式跳过的孤儿）。
+不依赖重型 TUI 框架的渲染：spinner、工具调用的折叠展示、流式 markdown 渲染（不闪烁不错位）。**流式传输本身不在本章教**——它已在第二部分开头（fetch 毕业、转 SDK 单轨后的首个版本）用 SDK helper 引入；本章只解决"拿到流之后怎么把终端体验做漂亮"。裸 SSE 手解析（不用 helper、自己按帧解析 text/event-stream）作为本章「练习与延伸」，给想看清"SDK 背后是什么"的读者动手复刻。
 → 里程碑：前后对比 GIF——流式 markdown、spinner、工具调用折叠；验收标准：长输出不闪烁、不错位。
 
 **15 评测：怎么知道它变好了**
@@ -118,6 +118,7 @@ MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，�
 
 - TypeScript + Node 22+，ESM
 - API：默认 Anthropic Messages API，附录给 OpenRouter/兼容端点方案
+- **正文 fetch/SDK 策略（2026-06-21 定）**：双轨到第一部分末——ch01–03 用裸 fetch 讲协议（API 就是 HTTP POST、tool_use 就是一段 JSON、loop 就是重发数组），ch04–05 滑行；第一部分末「fetch 毕业」用 SDK 跑同一 agent 证等价，第二部分起 SDK 单轨（了结两份 loop 维护税）。流式在 fetch 毕业后首个 SDK 版引入；附录 A/B 吃前段 fetch 红利
 - 零 agent 框架；终端渲染尽量手写（教学价值）
 - 仓库结构：`book/`（章节 markdown）+ `code/`（按章 tag 的实现）
 
