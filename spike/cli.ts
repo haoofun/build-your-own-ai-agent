@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { runAgent } from "./agent-sdk.ts";
 
 // import { runAgent } from "./agent-fetch.ts";
@@ -6,6 +7,8 @@ import { taskToolDefinition, runTaskTool } from "./subagent.ts";
 import type { Tool } from "@anthropic-ai/sdk/resources";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+
+import { MCPClient } from "./mcp-client.ts";
 
 const rl = createInterface({ input, output });
 
@@ -19,6 +22,12 @@ async function confirmToolCall(toolName: string, toolInput: unknown) {
 
 
 const controller = new AbortController();
+
+const mcpClient = new MCPClient({
+  command: "npx",
+  args: ["-y", "@playwright/mcp@latest"],
+  signal: controller.signal,
+});
 
 process.on("SIGINT", () => {
   controller.abort();
@@ -91,11 +100,94 @@ function todoWrite(input: unknown): string {
   return `Todo list updated:\n${JSON.stringify(todoState.todos, null, 2)}`;
 }
 
-const mainTools: Tool[] = [
-  ...tools,
-  taskToolDefinition,
-  todoWriteToolDefinition,
-];
+type McpHandler = (input: unknown) => Promise<string>;
+
+const mcpHandlers = new Map<string, McpHandler>();
+
+function makeMcpToolName(
+  serverName: string,
+  toolName: string,
+): string {
+  const sanitize = (value: string) =>
+    value.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  const name =
+    `mcp__${sanitize(serverName)}__${sanitize(toolName)}`;
+
+  if (name.length > 64) {
+    throw new Error(`MCP 工具名超过 64 字符: ${name}`);
+  }
+
+  return name;
+}
+
+function formatMcpContent(content: unknown[]): string {
+  return content
+    .map((block) => {
+      if (
+        block !== null &&
+        typeof block === "object" &&
+        !Array.isArray(block)
+      ) {
+        const obj = block as Record<string, unknown>;
+
+        if (
+          obj.type === "text" &&
+          typeof obj.text === "string"
+        ) {
+          return obj.text;
+        }
+      }
+
+      return JSON.stringify(block) ?? String(block);
+    })
+    .join("\n");
+}
+
+async function registerMcpTools(
+  client: MCPClient,
+  serverName: string,
+): Promise<Tool[]> {
+  const definitions: Tool[] = [];
+  const discovered = await client.listTools();
+
+  for (const tool of discovered) {
+    const exposedName = makeMcpToolName(
+      serverName,
+      tool.name,
+    );
+
+    if (mcpHandlers.has(exposedName)) {
+      throw new Error(`MCP 工具名冲突: ${exposedName}`);
+    }
+
+    mcpHandlers.set(exposedName, async (input) => {
+      const result = await client.callTool(
+        tool.name,
+        input,
+      );
+
+      const content = formatMcpContent(result.content);
+
+      if (result.isError) {
+        throw new Error(
+          content || `MCP 工具执行失败: ${tool.name}`,
+        );
+      }
+
+      return content;
+    });
+
+    definitions.push({
+      name: exposedName,
+      description: tool.description,
+      input_schema: tool.inputSchema,
+    });
+  }
+
+  return definitions;
+}
+
 
 async function mainRunTool(name: string, input: unknown, signal?: AbortSignal): Promise<string> {
   if (name === "task") {
@@ -106,38 +198,58 @@ async function mainRunTool(name: string, input: unknown, signal?: AbortSignal): 
     return todoWrite(input);
   }
 
+  const mcpHandler = mcpHandlers.get(name);
+
+if (mcpHandler) {
+  return await mcpHandler(input);
+}
+
   return await runBaseTool(name, input, signal);
 }
 
 const content: string = process.argv[2]
 
-try {
+async function main() {
+  try {
+    await mcpClient.start();
+
+    const mcpToolDefinitions = await registerMcpTools(
+      mcpClient,
+      "playwright",
+    );
+
+    const mainTools: Tool[] = [
+      ...tools,
+      taskToolDefinition,
+      todoWriteToolDefinition,
+      ...mcpToolDefinitions,
+    ];
+
     const result = await runAgent({
-        messages: [
-            {
-                role: "user",
-                content: content,
-            },
-        ],
-        maxTurns: 20,
-        tools: mainTools,
-        runTool: mainRunTool,
-        signal: controller.signal,
-        system: systemPrompt,
-        onToolCall: confirmToolCall,
+      messages: [{ role: "user", content }],
+      maxTurns: 20,
+      tools: mainTools,
+      runTool: mainRunTool,
+      signal: controller.signal,
+      system: systemPrompt,
+      onToolCall: confirmToolCall,
     });
-    console.dir(result.messages, { depth: null })
+
+    console.dir(result.messages, { depth: null });
     console.log(result.agentStopReason);
     console.log(result.usage);
-} catch (error) {
-    // 记得打印错误。
-    console.error(error);
-    if (isAbortError(error)) {
-        process.exit(130)
-    }
-    process.exit(1)
-}finally {
+  } finally {
+    await mcpClient.stop();
     rl.close();
+  }
 }
 
-// D3 两次验证运行（victim 修复 + 拒绝测试）的完整日志见 logs/d3-runs.log
+main().catch((error) => {
+  console.error(error);
+
+  process.exitCode =
+    controller.signal.aborted || isAbortError(error)
+      ? 130
+      : 1;
+});
+

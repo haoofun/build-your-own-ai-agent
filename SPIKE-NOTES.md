@@ -297,16 +297,91 @@ SDK 版 + fetch 版均完成，权限逻辑一致。tsc 绿灯。核心机制验
 3. **`isAbortError` 现两份**（agent-sdk + tools 各一），解耦的无害代价。
 4. **`grep -RIn -I` 的 `-I` 重复**（`-RIn` 已含 I），无害。
 
-## D6（06-16）MCP client（第二重）
+## D6（计划 06-16；hands-on 实落 06-21）MCP client（第二重）
 
-### 坑清单
+> 体例同 D4/D5：「查证速查」「章前对谈记要」为 AI 产出；「坑清单」此次多为**代码 review + 查证 derived**（作者报「代码写完了」，hands-on 口述坑与 e2e 对抗实证待补）。
 
--
+### 查证：MCP 协议速查（AI 查证 @2026-06-21，spec 版本 2025-06-18，来源见文末）
+
+**stdio 传输（比想象简单——不是 LSP 那套 Content-Length）**
+
+- client 把 server 当子进程 spawn，写其 stdin、读其 stdout
+- 每条消息 = **一行 JSON，`\n` 分隔，消息体内不得含换行**。读取端按行切 + 逐行 `JSON.parse`（`readline.createInterface` 直接按行切，省得手拼残块）
+- server 的 stderr 是日志频道，**不是协议流**，别 parse
+
+**生命周期三段**
+
+1. client 发 `initialize` 请求（`params`：`protocolVersion`、`capabilities`、`clientInfo{name,version}`）
+2. server 回 `result`（`protocolVersion`、`capabilities`、`serverInfo`，可选 `instructions`）
+3. client 再发**通知** `notifications/initialized`（无 id、不等响应）。发完才能调 `tools/*`——有 server 在此之前会拒
+4. 版本协商：server 不支持你给的版本会回它支持的版本；你不支持就该断开
+5. 关闭顺序（spec 明定，直接对上「abort 别留孤儿」）：**关 server stdin → 等退出 → 不退 SIGTERM → 仍不退 SIGKILL**
+
+**两个核心调用**
+
+- `tools/list` → `result.tools[]`（`{name, description, inputSchema}`，inputSchema 即 JSON Schema）。**支持分页**：响应可能带 `nextCursor`，须带 `cursor` 续请求直到取完
+- `tools/call`（`params{name, arguments}`）→ `result{content[], isError}`，content 项 `{type:"text",text}` 等
+
+**两类错误（spec 写得很清楚，是 D6 核心设计点）**
+
+- **协议错误**走 JSON-RPC `error`（未知工具、参数非法、server 崩）= transport 层失败
+- **工具执行错误**走 `result.isError:true`，错误文本在 content 里，要回灌给 LLM 自行处理
+- spec Security 段：client **SHOULD** 调用前展示工具输入、对敏感操作征求确认（"human in the loop with the ability to deny"）⇒ **「远程工具默认走审批」不是口味、是 spec 的 SHOULD**，与 D3「read 免审」形成对照
+
+**探针实测（沙盒 `@modelcontextprotocol/server-everything`，2026-06-21）**
+
+- 握手回 `protocolVersion: 2025-06-18`、`serverInfo.name: mcp-servers/everything`、13 个工具一页返完（`nextCursor` 空——此 server 不分页，翻页循环能跑通但只转一圈，想压测翻页得另找 server）
+- `echo` 调用回 `{content:[{type:"text",text:"Echo: hello mcp"}]}`
+- **现场逮到的前缀坑**：`serverInfo.name` = `mcp-servers/everything` **带斜杠**，不在工具名允许的 `[a-zA-Z0-9_-]` 里 ⇒ 直接用 serverInfo.name 拼前缀会被 API 拒。所以前缀该用**配置里的 server 别名**（如 `playwright`），不是 serverInfo.name；且必须 sanitize + 查 ≤64
+
+### 章前对谈记要（MCP 章 / OUTLINE ch12）
+
+1. **MCP 章定为「先手写 MCP client、再展示 SDK 简化版」**（BYOX 标准打法）：手写吃透原理（= 面试防御），收尾展示 `@modelcontextprotocol/sdk` 简化版当「现实里你会怎么写」。澄清了一处定位误读——CLAUDE.md「零 agent 框架」禁的是 LangChain 类编排框架，**官方 SDK（含 MCP SDK）明确放行**；手写 MCP client 是出于「能手写就不引依赖、逐行看懂」的教学第一标准，不是「不许用 SDK」。
+2. **协议层照抄 spec**（无设计空间）；**集成层不能照抄 Codex/Claude Code**（它们是生产级、框架重、几千行，且架构不是本书的；映射到自己既有 `runTool` 才是 ch11 的肉，也是面试防御点）。
+3. **三个集成决策（作者拍板）**：① 工具名加 `mcp__<server>__<tool>` 前缀、对齐 Claude Code（可观测、杜绝撞名）；② 工具来源异构由 **handler 内部决定**（注册时包成闭包塞进派发，`runTool` 退化成查表/路由，对来源无感知——D5 解耦的延续回报）；③ MCP 调用失败**回 isError 给 LLM**（Codex 行为：模型自己向用户解释失败）。
+
+### 坑清单（代码 review + 查证 derived，06-21；hands-on 口述坑 + e2e 实证待补）
+
+1. **MCP 启动绑死整个 agent（最该记的一条）。** `cli.main()` 里 `await mcpClient.start()` 是**第一件事**，紧接 `registerMcpTools`。任一步抛（npx 拉不动、server 起不来、握手失败）→ 整个 agent 根本不运行，**无降级**。单 server 的 spike 可接受，但这正是「失败隔离」的反面：真实多 server 配置必须让某个 server 启动失败不拖垮其余能力（连本地工具都用不上就太亏）。→ MCP 章「为什么需要它」+ 失败隔离正文。
+2. **initialize 无超时——`await start()` 可能永久挂起。** `child.on("exit")` 的 `rejectAll` 兜得住「server 死了」，兜不住「活着但不答」或「npx 首次下载卡住」。沙盒实测 `npx -y` 首拉就超过 45s。spec SHOULD 给每个请求设超时正是为此。spike 没做，记账。
+3. **精心写的「两层错误区分」在 cli handler 被压平一层。** `mcp-client.ts` 严格区分了协议 `error`（reject/throw）与 `tools/call` 的 `isError`（正常 resolve 回 `McpToolResult`）——很干净。但 cli 的 `mcpHandlers` 闭包里，**`result.isError` 时直接 `throw new Error(content)`**。于是两类失败殊途同归：都变成抛异常 → 被 agent loop 的 try/catch（D2 定式）接住转 `is_error` tool_result 回 LLM。**净效果对**（执行错误确实到了 LLM），但 client 层费心拉开的「协议 vs 执行」距离在 cli 层又合上了。教学点：分层的语义保真要一路守到顶，否则下层的精确被上层一句 `throw` 抹平。
+4. **失联 server 的工具不下架（spike 有意跳过）。** 查证实锤：Claude Code 在 server 断开时会**标记 disconnected + 工具变 unavailable**，且**不自动重连**（一堆 open issue 在催，#36308/#57207）；又：**一次 bad tool call 能崩掉整个 stdio server 进程**（未捕获异常）→ 它名下**所有**工具一起失效。本 spike 失败只回 isError、工具留在表里，LLM 可能对死掉的 server 反复重试空转。下架失联工具 + 重连留作正文边界（连官方都还没做好，诚实写进 MCP 章）。
+5. **前缀 sanitize 是有损的、靠冲突 throw 兜底。** `makeMcpToolName` 用 `replace(/[^a-zA-Z0-9_-]/g,"_")`，两个不同名（`a.b` 与 `a_b`）可能塌成同一个 → 靠 `mcpHandlers.has(exposedName)` 冲突 throw 兜（不静默）。>64 也 throw。够 spike，但「lossy sanitize + 显式冲突」这对组合是 MCP 章命名一节的具体料。
+6. **远程工具走审批是「结构性免费」拿到的——但仍坐在 D3 焊死债上。** MCP 工具经 `mainRunTool` 走通用派发，loop 在 `runTool` 前调 `onToolCall`，于是 MCP 工具自动被审批（命中「远程一律审」的 spec SHOULD），一行权限没写。但免审判据仍是 D3 那条焊死的 `name !== "read_file"`——名字驱动、脆弱（呼应 D3 review #1、D5 待修「免审跟工具走」）。
+7. **`mainRunTool` 是 4 路 if 链，不是当初谈的「统一一张 `name→handler` 表」。** task / todo_write / mcpHandler / base 顺序 if。功能对，但「handler 内部决定」落地成了路由链而非单表——是作者自评「不够优雅」的一个具体落点（见本日反思）。
+8. **（存档，做对的）** stop 幂等（`stopPromise` 缓存）+ abort 监听 once + `waitForExit` 三段 kill 严格按 spec；`request` 里 `send` 抛了先 `pending.delete` 再 reject（不留悬挂 promise）；`handleMessage` 先窄化、`typeof id!=="number"` 归为通知/未知、未知 id 响应只 warn；`listTools` 用 `seenCursors` 防 server 发重复 cursor 死循环——这些防御 review 未挑出问题。
+9. **（非 MCP、延续债）** todo 仍模块全局（D5 坑6）；`@playwright/mcp` 这类浏览器 server 工具多，每次调用都弹 y/N 审批，交互噪声大（spike 不管）。
+
+### D6 收口（06-21）
+
+- **手写 stdio MCP client 主链路跑通**（代码 review 维度）：传输/握手/翻页/调用/关闭/abort 全有且防御到位；cli 完成 `mcp__别名__tool` 并表 + sanitize + 冲突/超长 throw，真实对接 `@playwright/mcp`。集成三决策（前缀对齐 CC / handler 内部决定 / isError 回 LLM）均落地。
+- **最该补的两件**：① **e2e 对抗实证**——拿真 server 跑里程碑（握手→翻页→真实 tools/call→杀 server 进程看降级），目前只有沙盒探针验过协议、未验作者的 client 端到端；② **hands-on 口述坑**——作者报「D5/D6 抽象层次太高、问了 Codex 不少」，这本身是 ch10/ch11 的素材信号（见下），具体卡点待作者补述。
+- **fetch 版 MCP 不写**（同 D4/D5，计 D7 账）。D2 收口已预判「D6 是差异分水岭」：SDK 有 `mcpTools()`/`mcpMessages()` helper，fetch 全裸手写——这条差异现在坐实，是 D7 拍板 fetch-vs-SDK 的关键数据点。
+- **抽象层次反思（作者提，子 agent 章 / MCP 章 教学信号）**：D5（子 agent）、D6（MCP）是全周作者主观最难、最依赖 Codex 的两段。共性 = 抽象层次陡升（子 agent = loop 自指复用；MCP = 异构工具源 + 独立进程协议 + 生命周期）。**含义**：这两章在正文里需要最多的「原理拆解」铺垫与最缓的坡度，且作者须确保能独立防御这两处的设计（导师铁律：spike 阶段问 Codex 跑通无妨——spike 本就throwaway；但参考实现 code/ 与讲解必须作者自己吃透，否则丢面试防御权）。「不够优雅」属 spike 纪律内的预期（spike = 不打磨），参考实现重写时才追求优雅；坑7 的 if 链是优雅可改进的具体一例。
 
 ## D7（06-17）缓冲 + 复盘
 
 - [ ] 整理全周坑清单
-- [ ] 拍板 fetch vs SDK（全书最大教学设计决策）
+- [x] 拍板 fetch vs SDK（全书最大教学设计决策）——06-21（D6 当日）提前定，见下
+
+### 拍板（06-21 提前定，D7 复盘时并入）
+
+**fetch vs SDK 正文策略：双轨到第一部分末，之后 SDK 单轨。**
+
+- fetch 是**第一部分的教学脊柱**；fetch 原理价值集中在 ch01–03（API 就是一个 HTTP POST / tool_use 只是同一响应里的一段 JSON / loop 就是 append 数组再重发），ch04–05 已在"滑行"（工具层、无新协议）。
+- 第一部分末设「**fetch 毕业**」动作：同一个 agent 用 SDK 再跑一遍证等价（"魔法只是 HTTP，现在知情地接受 SDK 便利"），就此甩掉第二份 loop。
+- 第二部分起 **SDK 单轨**——**两份 loop 的维护税在此了结**（呼应 D3 review #2、D4 收口：fetch 自 D4 起持续落后，是否扛到正文本就是 D7 决策数据）。
+- 附录 A（OpenAI 兼容端点）/ 附录 B（多模型适配）**吃前段 fetch 红利**：本质是薄薄一层 fetch/适配，前两部分建立的 fetch 直觉在此兑现，所以早期 fetch 不是沉没成本。
+
+**流式（SSE）处置：**
+
+- **fetch 章节完全不做流式**（ch01 起一律非流式的延续）。
+- 流式在 **fetch 毕业后第一个 SDK 独占版本（第二部分开头）引入**：正文几行 SDK helper（`text_stream` / `.finalMessage()`）+ 一段旁注讲"SDK 背后替你累加了什么（`input_json_delta` 碎片 → 块重建）"。事实依据：大 `max_tokens` 时 SDK 强制流式以避免 HTTP 超时——流式不纯是化妆。
+- **裸 SSE 手解析 → 该章「练习与延伸」**（动手复刻：裸 fetch + `stream:true`，按帧切、parse `data:`、`text_delta` 打印，约 30 行文本版；带工具的 `input_json_delta` 重建点到为止）。BYOX 亲手感经练习保留，不在正文写状态机、也不退化成"挥手让读者研究"。
+- **保留瘦身版「终端体验打磨」章**（spinner / 工具调用折叠 / 流式 markdown 渲染不闪烁不错位）——demo GIF 来源，服务曝光指标；它不再负责教流式传输。
+- **ch05 不前移裸 SSE demo**（放弃），仅留一句前向指引（"长输出现在干等，第二部分用流式解决"）。
+- **流式 spike 周零接触、无实测依据**：引入前建议半天 mini-spike（裸 fetch 把 `text_delta` 打出来）确认手感再写正文。
+- 章号按能力名引用，最终以 OUTLINE 为准（"fetch 毕业 / SDK 单轨"的起点、"终端体验打磨"的位置受 ch08 拆分待拍板影响，M1 期间定号）。
 
 ---
 
@@ -347,3 +422,11 @@ SDK 版 + fetch 版均完成，权限逻辑一致。tsc 绿灯。核心机制验
 - https://code.claude.com/docs/en/agent-sdk/permissions
 - https://developers.openai.com/codex/subagents
 - https://anthropic.com/engineering/claude-code-auto-mode
+
+**查证来源（2026-06-21 抓取，D6 MCP）**
+
+- https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle
+- https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
+- https://modelcontextprotocol.io/specification/2025-06-18/server/tools
+- https://github.com/anthropics/claude-code/issues/36308 （MCP 断开应自动重连）
+- https://github.com/anthropics/claude-code/issues/57207 （`claude mcp reconnect`）
