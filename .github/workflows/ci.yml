@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  # 站点构建（VitePress 自带 dead link 检查，坏链即失败）+ llms.txt 生成
+  # 站点构建（Astro + Starlight，dead link 检查由 Astro 内置）+ llms.txt 生成
   site:
     runs-on: ubuntu-latest
     steps:
@@ -16,9 +16,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run docs:build
+      - run: npm run build
 
-  # 电子书冒烟：保证任何一章合入都没破坏 epub 路径（样式到 M4 再调）
+  # 电子书冒烟：保证任何一章合入都没破坏 epub 路径（样式/封面到 M4 再做）
+  # 注意：.mdx 文件不被 pandoc 处理，仅 .md 文件纳入 epub（见 CLAUDE.md 电子书策略）
   ebook:
     runs-on: ubuntu-latest
     steps:

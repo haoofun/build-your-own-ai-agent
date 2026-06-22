@@ -1,0 +1,16 @@
+/* IBM Plex Sans — via @fontsource (Latin + subset) */
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+
+/* IBM Plex Mono — via @fontsource */
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+/*
+ * IBM Plex Sans SC (简体中文) は <link rel="stylesheet" href="/fonts/ibm-plex-sans-sc.css">
+ * 由 astro.config.ts head[] 注入，woff2 分块按 unicode-range 按需下载，不走 Vite 管线。
+ *
+ * 设计系统 token、排版、颜色待重建 — 目前为空白。
+ */

@@ -1,0 +1,245 @@
+/* =============================================================================
+ * 首页 / 落地页样式 —— 纯网站地盘（不进 book/、不过 pandoc、不进 llms.txt）
+ * 见 CLAUDE.md 单源边界：首页可放开做强交互，AgentTrace 即装首页、不占孤岛名额。
+ *
+ * 本文件做两件事：
+ *   1. token 桥：把设计系统的 token 名（--text-1 / --bg / --radius-md …）映射到
+ *      与阅读主题（custom.css）完全一致的 zinc 值，供首页 Vue 组件直接复用。
+ *   2. 首页布局类：hero 两栏、CTA band、特性卡片的响应式排布（CSS 媒体查询，
+ *      SSR 安全、无布局抖动）。
+ * 配色 / 字体严格沿用 zinc 单色系：无品牌色，唯二暖色是 warning/danger。
+ * ========================================================================== */
+
+/* ---- token 桥（浅色）—— 与 custom.css 的 zinc 阶梯逐一对齐 -------------- */
+:root {
+  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans SC', system-ui, -apple-system,
+    'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', ui-monospace,
+    Consolas, monospace;
+
+  --bg: #ffffff;
+  --bg-alt: #fafafa;
+  --bg-soft: #f4f4f5;
+
+  --text-1: #18181b; /* zinc-900 标题 / 强调 / 链接 */
+  --text-2: #52525b; /* zinc-600 正文 */
+  --text-3: #a1a1aa; /* zinc-400 次要 / 标签 */
+
+  --border: #e4e4e7; /* zinc-200 */
+  --border-strong: #d4d4d8; /* zinc-300 */
+
+  --warning: #a16207; /* amber-700：唯一允许的警示暖色 */
+  --danger: #b91c1c; /* red-700 */
+
+  --text-h4: 16px;
+  --text-sm: 14px;
+  --text-xs: 13px;
+  --text-2xs: 12px;
+  --leading-body: 1.75;
+  --weight-medium: 500;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-full: 9999px;
+  --border-accent-width: 3px;
+
+  --shadow-sm: 0 1px 3px rgba(24, 24, 27, 0.06), 0 1px 2px rgba(24, 24, 27, 0.04);
+
+  --space-2: 8px;
+  --layout-max: 1440px;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 0.15s;
+}
+
+/* ---- token 桥（深色）—— 与 custom.css 的 .dark 一致 -------------------- */
+.dark {
+  --bg: #09090b;
+  --bg-alt: #18181b;
+  --bg-soft: #27272a;
+
+  --text-1: #fafafa;
+  --text-2: #a1a1aa;
+  --text-3: #71717a;
+
+  --border: #27272a;
+  --border-strong: #3f3f46;
+
+  --warning: #d2a44e;
+  --danger: #f87171;
+}
+
+/* =============================================================================
+ * 首页布局
+ * ========================================================================== */
+.byoa-home {
+  max-width: var(--layout-max);
+  margin: 0 auto;
+  padding: 72px 24px 96px;
+  font-family: var(--font-sans);
+}
+
+/* ---- hero：左侧推介 + 右侧实时 AgentTrace ----------------------------- */
+.byoa-hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 44px;
+  align-items: center;
+}
+@media (min-width: 1000px) {
+  .byoa-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 520px);
+    gap: 56px;
+  }
+}
+
+.byoa-hero__pitch {
+  max-width: 640px;
+}
+.byoa-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-3);
+  margin-bottom: 16px;
+}
+.byoa-hero h1 {
+  margin: 0;
+  font-size: 44px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--text-1);
+}
+.byoa-hero__zh {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-2);
+  margin-top: 8px;
+  letter-spacing: -0.01em;
+}
+.byoa-hero__tagline {
+  font-size: var(--text-h4);
+  line-height: 1.75;
+  color: var(--text-2);
+  margin-top: 20px;
+}
+.byoa-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.byoa-trace-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+/* ---- 按钮：单色，主按钮墨黑实底、次按钮描边 -------------------------- */
+.byoa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1;
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+.byoa-btn--primary {
+  background: var(--text-1);
+  color: var(--bg);
+  border-color: var(--text-1);
+}
+.byoa-btn--primary:hover {
+  background: var(--text-2);
+  border-color: var(--text-2);
+}
+.byoa-btn--secondary {
+  background: transparent;
+  color: var(--text-1);
+  border-color: var(--border-strong);
+}
+.byoa-btn--secondary:hover {
+  border-color: var(--text-1);
+}
+
+/* ---- CTA band：把本书装进你的 agent --------------------------------- */
+.byoa-cta {
+  margin: 64px auto 0;
+  padding-top: 36px;
+  border-top: 1px solid var(--border);
+  max-width: 640px;
+  text-align: center;
+}
+.byoa-cta__lead {
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--text-2);
+  margin: 0 auto 16px;
+  max-width: 600px;
+}
+.byoa-cta__lead b {
+  color: var(--text-1);
+  font-weight: 600;
+}
+.byoa-cta__cmd {
+  display: flex;
+  justify-content: center;
+  text-align: left;
+}
+.byoa-cta__cmd > div {
+  width: 100%;
+  max-width: 560px;
+}
+
+/* ---- 特性卡片 --------------------------------------------------------- */
+.byoa-features {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 64px;
+}
+@media (min-width: 1000px) {
+  .byoa-features {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.byoa-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+  padding: 20px;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+.byoa-card:hover {
+  border-color: var(--text-1);
+}
+.byoa-card__eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+}
+.byoa-card__title {
+  font-size: var(--text-h4);
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 8px 0 8px;
+}
+.byoa-card__body {
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--text-2);
+  margin: 0;
+}

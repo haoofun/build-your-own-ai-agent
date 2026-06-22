@@ -62,7 +62,11 @@ export default defineConfig({
   sitemap: { hostname: 'https://build-your-own-ai-agent.com' },
 
   themeConfig: {
-    nav: [{ text: '开始阅读', link: '/00-intro' }],
+    nav: [
+      { text: '大纲', link: '/outline' },
+      { text: '开始阅读', link: '/00-intro' },
+      { text: '关于', link: '/about' },
+    ],
     sidebar,
     outline: { label: '本页目录', level: [2, 3] },
     docFooter: { prev: '上一章', next: '下一章' },
@@ -111,7 +115,7 @@ export default defineConfig({
     plugins: [
       llmstxt({
         domain: 'https://build-your-own-ai-agent.com',
-        ignoreFiles: ['index.md'],
+        ignoreFiles: ['index.md', 'outline.md', 'about.md'],
       }),
     ],
   },
