@@ -120,17 +120,19 @@ MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，�
 - API：默认 Anthropic Messages API，附录给 OpenRouter/兼容端点方案
 - **正文 fetch/SDK 策略（2026-06-21 定）**：双轨到第一部分末——ch01–03 用裸 fetch 讲协议（API 就是 HTTP POST、tool_use 就是一段 JSON、loop 就是重发数组），ch04–05 滑行；第一部分末「fetch 毕业」用 SDK 跑同一 agent 证等价，第二部分起 SDK 单轨（了结两份 loop 维护税）。流式在 fetch 毕业后首个 SDK 版引入；附录 A/B 吃前段 fetch 红利
 - 零 agent 框架；终端渲染尽量手写（教学价值）
-- 仓库结构：`book/`（章节 markdown）+ `code/`（按章 tag 的实现）
+- 仓库结构：`src/content/docs/`（章节 markdown/mdx）+ `src/components/`（交互孤岛 React 组件）+ `code/`（按章 tag 的实现）
 
 ## 六、发布管线（单源三端）
 
 ```
-book/*.md ──→ VitePress ──→ 网站（含评论、章节导航）
-          └─→ pandoc ────→ epub / PDF（电子书，定价/赞助制）
+src/content/docs/*.md  ──→ Astro + Starlight ──→ 网站（含章节导航、llms.txt）
+                        └─→ pandoc ────────────→ epub / PDF（电子书，定价/赞助制）
+src/content/docs/*.mdx ──→ Astro + Starlight ──→ 网站（交互孤岛章节）
+                        └─→ 电子书跳过（M4 加预处理管线再补）
 仓库本体 = GitHub（README 即课程入口）
 ```
 
-约定（2026-06-10 定）：markdown 为主，交互动画为孤岛（容器块 + 静态降级图，全书控制在关键处）；网站部署 Cloudflare Pages；电子书延后到 M4 生产，写作期仅保持 pandoc 兼容。
+约定：markdown 为主，交互动画为孤岛（MDX + React 组件 + 静态降级内容，全书控制在关键处）；网站部署 Cloudflare Pages；电子书延后到 M4 生产，写作期 `.md` 文件保持 pandoc 兼容，`.mdx` 文件 M4 统一补预处理。
 
 **agent 可读（第四端）**：站点内置生成 llms.txt / llms-full.txt，读者可直接把链接丢给自己的 AI agent；M4 随 1.0 上线 **skill 页**——提供 SKILL.md（Claude Code）与 AGENTS.md 引导（Codex 等），让读者用自己的 agent 当导师学完本书。导师 prompt 苏格拉底式：讲原理、查作业、不代写（导师铁律的产品化，呼应 ch13「书教 skills，书即 skill」）。
 
