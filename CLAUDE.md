@@ -84,7 +84,7 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 
 ## 协作工作流（2026-06-10 定）
 
-**工程操作约定**：AI（Claude Code）可直接使用 git——提交、`git rm`、打 tag 均可执行（spike 阶段的沙盒限制已解除，2026-06-22 更新）。**push 和 force-push 须先确认**，不自动执行。node_modules 由 `npm install` 生成，AI 可在项目内运行。**commit message 一律用英文**（2026-06-21 定）。
+**工程操作约定**：AI（Claude Code）可直接使用 git——提交、`git rm`、打 tag 均可执行（spike 阶段的沙盒限制已解除，2026-06-22 更新）。**push 和 force-push 须先确认**，不自动执行。node_modules 由 `npm install` 生成，AI 可在项目内运行。**commit message 一律用英文**。
 
 **阶段一：spike 周（实际 2026-06-11 = D1 起，一周；每日坑清单落 SPIKE-NOTES.md）**
 作者粗糙跑通核心能力链：loop → 工具 → 权限 → compaction → 子 agent → MCP。目标是暴露全局设计约束（如 loop 须可被子 agent 复用、AbortController 一开始就穿进 loop），不是产出好代码。纪律：不打磨、不发布；代码放 `spike` 分支，不作为参考实现；每日记"坑清单"（即各章"为什么需要它"的素材）。AI 并行搭发布管线。Day 7 未跑通的能力（如 MCP）顺延到对应里程碑前补 spike，不延长 spike 周。
