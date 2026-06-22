@@ -8,30 +8,30 @@
 ## 仓库结构
 
 ```
-book/      章节 markdown（唯一内容源 → 网站 / 电子书 / llms.txt）
-code/      参考实现，按章打 tag：chapter-01 … chapter-16（M1 起）
-.vitepress 网站配置（VitePress）
-scripts/   电子书构建（pandoc）
-WRITING.md 写作规范（pandoc 兼容约定）
-OUTLINE.md 课程大纲
+src/content/docs/  章节 markdown（唯一内容源 → 网站 / 电子书 / llms.txt）
+code/              参考实现，按章打 tag：chapter-01 … chapter-16（M1 起）
+astro.config.ts    网站配置（Astro + Starlight）
+scripts/           电子书构建（pandoc）
+WRITING.md         写作规范（pandoc 兼容约定）
+OUTLINE.md         课程大纲
 ```
 
 ## 本地开发
 
 ```bash
 npm install
-npm run docs:dev      # 本地预览 http://localhost:5173
-npm run docs:build    # 构建（含 dead link 检查 + llms.txt 生成）
-npm run ebook         # 电子书冒烟构建（需 pandoc：brew install pandoc）
+npm run dev       # 本地预览 http://localhost:4321
+npm run build     # 构建（含 dead link 检查 + llms.txt 生成）
+npm run ebook     # 电子书冒烟构建（需 pandoc：brew install pandoc）
 ```
 
 ## 部署（Cloudflare Pages）
 
 | 配置项 | 值 |
 |---|---|
-| Framework preset | VitePress |
-| Build command | `npm run docs:build` |
-| Build output directory | `.vitepress/dist` |
+| Framework preset | Astro |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
 | 环境变量 | `NODE_VERSION=22` |
 
 自定义域名：`build-your-own-ai-agent.com`（域名在 Cloudflare Registrar，同面板绑定）。
