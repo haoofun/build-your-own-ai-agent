@@ -8,7 +8,7 @@
 
 **读者画像**：会写代码（任意语言，能看懂 TS）、调用过或听说过 LLM API、但从没拆开过 agent 黑盒的工程师。不要求机器学习背景。
 
-**最终成品**：一个 ~2500 行的 CLI 编码 agent，具备 Claude Code 的核心能力：agent loop、文件读写编辑、shell 执行、权限确认、上下文压缩、子 agent、MCP 接入。
+**最终成品**：一个几千行的 CLI 编码 agent，具备 Claude Code 的核心能力：agent loop、文件读写编辑、shell 执行、权限确认、上下文压缩、子 agent、MCP 接入。
 
 ## 二、差异化
 
@@ -128,11 +128,11 @@ MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，�
 src/content/docs/*.md  ──→ Astro + Starlight ──→ 网站（含章节导航、llms.txt）
                         └─→ pandoc ────────────→ epub / PDF（电子书，定价/赞助制）
 src/content/docs/*.mdx ──→ Astro + Starlight ──→ 网站（交互孤岛章节）
-                        └─→ 电子书跳过（M4 加预处理管线再补）
+                        └─→ 电子书跳过（后续加预处理管线再补）
 仓库本体 = GitHub（README 即课程入口）
 ```
 
-约定：markdown 为主，交互动画为孤岛（MDX + React 组件 + 静态降级内容，全书控制在关键处）；网站部署 Cloudflare Pages；电子书延后到 M4 生产，写作期 `.md` 文件保持 pandoc 兼容，`.mdx` 文件 M4 统一补预处理。
+约定：markdown 为主，交互动画为孤岛（MDX + React 组件 + 静态降级内容，全书控制在关键处）；网站部署 Cloudflare Pages；电子书延后生产，写作期 `.md` 文件保持 pandoc 兼容，`.mdx` 文件后续统一补预处理。
 
 **agent 可读（第四端）**：站点内置生成 llms.txt / llms-full.txt，读者可直接把链接丢给自己的 AI agent；M4 随 1.0 上线 **skill 页**——提供 SKILL.md（Claude Code）与 AGENTS.md 引导（Codex 等），让读者用自己的 agent 当导师学完本书。导师 prompt 苏格拉底式：讲原理、查作业、不代写（导师铁律的产品化，呼应 ch13「书教 skills，书即 skill」）。
 

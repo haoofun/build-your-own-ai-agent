@@ -4,17 +4,17 @@
 
 ## 项目是什么
 
-《Build Your Own AI Agent —— 从零复刻一个 Claude Code》：一个 build-your-own-x 风格的开源课程，教读者用 TypeScript 从零手写一个编码 agent（不用任何 agent 框架）。最终成品是 ~2500 行的 CLI agent，具备 agent loop、文件读写编辑、shell 执行、权限确认、上下文压缩、子 agent、MCP 接入能力。
+《Build Your Own AI Agent —— 从零复刻一个 Claude Code》：一个 build-your-own-x 风格的开源课程，教读者用 TypeScript 从零手写一个编码 agent（不用任何 agent 框架）。最终成品是不到一万行的 CLI agent，具备 agent loop、文件读写编辑、shell 执行、权限确认、上下文压缩、子 agent、MCP 接入能力等 agent 核心能力。
 
 - **作者目标**：求职作品集项目，以曝光率衡量成绩（GitHub star、网站 UV、电子书销量/赞助）
 - **语言策略**：中文首发，英文翻译版后续跟进（用于向 build-your-own-x 官方列表提 PR）
-- **发布形态**：章节内容 → GitHub 仓库 + Astro + Starlight 网站（Cloudflare Pages 部署）+ pandoc 电子书（epub/PDF）。约定：`.md` 章节为主、交互组件用 MDX 孤岛（`import` React 组件）；电子书到 M4 才实际生产，MDX 章节届时需 pandoc 预处理步骤
+- **发布形态**：章节内容 → GitHub 仓库 + Astro + Starlight 网站（Cloudflare Pages 部署）+ pandoc 电子书（epub/PDF）。约定：章节统一使用受约束的 .mdx。正文仍以标准 Markdown 语法编写，只有交互教学模块使用 React 组件，并通过 Astro client:* 指令按需作为交互孤岛运行。电子书计划目前到正文完结再实际生产，届时增加 MDX 降级预处理，将交互组件转换为静态图片或静态内容后再交给 Pandoc。
 
 ## 核心定位与差异化
 
 - 对标 CodeCrafters《Build your own Claude Code》（付费课，止步于 Read/Write/Bash + 基础 loop）：我们免费且更深
 - 区别于源码逆向分析（learn-claude-code）和使用教程（AI-Coding-Guide-Zh）：我们是**教学型 from-scratch**，渐进式构建
-- 中文圈已有先行者（Windy/claude-code-from-scratch，2026-03 发布，成品导读式、止步于 compaction）；渐进式构建 + 进阶能力（子 agent / MCP / skills）+ 评测仍无人覆盖，差异化在深度与教学形态，不在先发
+- 中文圈已有先行者（Windy/claude-code-from-scratch，2026-03 发布，成品导读式）；渐进式构建，差异化在深度与教学形态，不在先发。而且 Windy/claude-code-from-scratch 内容疑似 AI 生成，大片大片的代码不利于理解，阅读心智负担很重。
 
 ## 关键约定（评审/写作时必须遵守）
 
@@ -23,8 +23,8 @@
 3. **零 agent 框架**：禁止 LangChain 等；仅允许官方 SDK 或裸 fetch、必要的终端渲染库
 4. 代码按章打 git tag（chapter-01 … chapter-16）
 5. 中文行文，技术名词保留英文（如 tool use、compaction，不强行翻译）
-6. 默认 Anthropic Messages API；附录 A 提供 OpenRouter/OpenAI 兼容端点方案（解决中国大陆读者 API 访问问题，不可省略）
-7. **单源边界**：`src/content/docs/` 是内容单源，喂三端（Astro/Starlight 站 / pandoc 电子书 / llms.txt）。章节文件可以是 `.md`（纯 markdown，pandoc 直接兼容）或 `.mdx`（含 React 组件孤岛，pandoc 暂不兼容，M4 补预处理）。交互孤岛在 MDX 中以 `import` + JSX 组件形式出现，不再用 VitePress 的 `::: {.interactive}` 容器。**首页、落地页、404（`src/pages/`）放开做强交互**（零三端税，可用任意 React 组件）。一句话尺子：在 `src/content/docs/` = `.md`/`.mdx` + 全书三五个孤岛；在 `src/pages/` = 放开做。
+6. 默认 Anthropic Messages API；附录 A 提供 OpenAI 兼容端点方案
+7. **单源边界**：`src/content/docs/` 是内容单源，喂三端（Astro/Starlight 站 / pandoc 电子书 / llms.txt）。网站和 github 仓库是一等公民，电子书最后做。
 
 ## 仓库规划结构
 
@@ -42,7 +42,6 @@ src/
 public/
   fonts/             # IBM Plex Sans SC 自托管字体（woff2 分块 + CSS）
   images/            # 静态图片
-.vitepress/theme/fonts/  # SC 字体来源备份（已同步至 public/fonts/）
 scripts/             # build-ebook.sh：pandoc epub 冒烟构建（读 src/content/docs/*.md）
 .github/             # CI：站点构建 + epub 冒烟
 code/                # 按章 tag 的参考实现（M1 起）

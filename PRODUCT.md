@@ -12,9 +12,9 @@ brand
 
 ## Product Purpose
 
-《Build Your Own AI Agent —— 从零复刻一个 Claude Code》：一个 build-your-own-x 风格的**免费开源**教学课程。用 ~2500 行 TypeScript、不依赖任何 agent 框架，渐进式地构建出一个具备 agent loop、文件读写编辑、shell 执行、权限确认、上下文压缩、子 agent、MCP 能力的 CLI agent。
+《Build Your Own AI Agent —— 从零复刻一个 Claude Code》：一个 build-your-own-x 风格的**免费开源**教学课程。用几千行 TypeScript，渐进式地构建出一个具备 agent loop、文件读写编辑、shell 执行、权限确认、上下文压缩、子 agent、MCP 能力的 CLI agent。
 
-发布形态：单一 markdown 源 → GitHub 仓库 + VitePress 网站（Cloudflare Pages）+ pandoc 电子书。成功的衡量是**曝光率**：GitHub star、网站 UV、电子书销量 / 赞助。因此「读者愿不愿意读下去、读得顺不顺」直接等于产品成败 —— 设计本身就是产品。
+发布形态：单一 markdown 源 → GitHub 仓库 + 网站（Cloudflare Pages）+ pandoc 电子书。成功的衡量是**曝光率**：GitHub star、网站 UV、电子书销量 / 赞助。因此「读者愿不愿意读下去、读得顺不顺」直接等于产品成败 —— 设计本身就是产品。
 
 ## Brand Personality
 
@@ -30,7 +30,6 @@ brand
 
 - **付费墙 / 会员 / 解锁 chrome**（对标 CodeCrafters 这类付费课）。本项目免费开源，站点上不应出现任何商业化、付费、登录解锁、"Premium" 标识等元素。这是最硬的红线。
 - **营销味的渐变 SaaS 落地页**：头部团队 logo 墙、"supercharge / 下一代" 文案、英雄区大字营销。
-- **千篇一律的默认 VitePress 蓝**：不要一眼看上去就是「又一个没调过的文档站」。
 - 成品导读 / 逆向分析式的呈现（learn-claude-code、Windy 的成品导读）—— 这是定位差异，不只是视觉。
 
 **重要例外（来自作者）**：少量、克制的渐变与插画是**允许甚至鼓励**的，只要它们用于*降低读者的阅读负担*（例如帮助理解的示意图、柔和的分区背景）。被禁止的是**营销与付费**，不是颜色或图像本身。不要把"克制"过度解读成"无菜单的纯黑白"。
