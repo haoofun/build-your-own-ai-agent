@@ -4,7 +4,9 @@ import ReadingLayout from '../layouts/ReadingLayout.astro'
 
 export async function getStaticPaths() {
   const entries = await getCollection('docs')
-  return entries.map((entry) => ({
+  // draft 页仅在 dev 下可路由，生产构建排除（设计样章等不进发布站）
+  const visible = import.meta.env.PROD ? entries.filter((e) => !e.data.draft) : entries
+  return visible.map((entry) => ({
     params: { slug: entry.slug },
     props: { entry },
   }))

@@ -24,35 +24,41 @@
 正文保持纯 markdown，不含 JSX/MDX 语法。交互孤岛通过 MDX 包装文件引入（见下）。
 
 **含交互孤岛的章节：`.mdx` 文件**
-把对应章节从 `.md` 改为 `.mdx`，在文件顶部 import React 组件，然后在正文中用 JSX 插入，并在 JSX 下方紧跟静态降级内容（供 pandoc / 无 JS 端）：
+把对应章节从 `.md` 改为 `.mdx`，在文件顶部 import 孤岛组件，然后在正文中用 JSX 插入。静态降级由组件架构负责，作者无需手配 PNG：
 
 ```mdx
 ---
-title: "03 · Agent Loop"
+title: "03 · Agent Loop：循环直到完成"
 ---
 
-import AgentLoopVisualizer from '../../components/AgentLoopVisualizer'
-
-# 03 · Agent Loop
+import AgentTrace from '../../components/AgentTrace'
 
 ...正文...
 
-<AgentLoopVisualizer client:visible />
-
-<!-- 静态降级：电子书与无 JS 端显示下图 -->
-![agent loop 静态示意图](./images/agent-loop.png)
+<AgentTrace
+  client:visible
+  title="agent loop"
+  events={[
+    { role: 'user', text: '...' },
+    { role: 'assistant', text: '...' },
+    { role: 'tool_use', name: 'read_file', input: { path: 'src/...' } },
+    { role: 'tool_result', exit: 0, text: '...' },
+    { role: 'assistant', final: true, text: '...' },
+  ]}
+/>
 ```
 
 - 网站端：Astro 的 `client:visible` 指令让组件在视口内时水合，渲染交互体验
 - React 组件放 `src/components/`，可使用完整 React 生态，不受 pandoc 约束
 - **`.mdx` 文件 pandoc 不处理**（至 M4 再加预处理管线；现阶段电子书跳过 `.mdx` 章节）
-- 全书交互点控制在关键处（三五个），每个必须在 `.mdx` 文件中紧跟静态降级图
+- **孤岛配额：每章一个 loop 岛**——用 `AgentTrace` 展示本章新增的那一圈 loop（每章比上一章多一种事件：tool_use → permission → subagent → compaction…），这是本书区别于普通 TS 教程的招牌。额外的特殊孤岛从严，须过「动起来比静态图更会教」门槛
+- **静态降级自动化**：`AgentTrace` 的无 JS / 电子书形态是 `StaticIsland`（同一条链、全展开、纯静态渲染），作者无需手配静态图；M4 预处理统一把 `AgentTrace` 换成 `StaticIsland`
 - **pandoc 兼容底线**：能用 `.md` 就不升 `.mdx`；只有确实需要交互组件的章节才改后缀
 
 ## 语法红线
 
 - **`.md` 文件**（普通章节）：禁 MDX / JSX 语法——这些文件要过 pandoc，混入 JSX 会破坏电子书构建
-- **`.mdx` 文件**（孤岛章节）：JSX 合法，但每个交互块下方须配静态降级内容（图或文字），让电子书 M4 预处理时有内容可用
+- **`.mdx` 文件**（孤岛章节）：JSX 合法；交互孤岛优先用 `AgentTrace`——它的 `StaticIsland` 形态即电子书 / 无 JS 降级，无需手配静态图。若自定义其他交互组件，须自带静态降级形态
 - Starlight 内置容器（`::: tip`、`::: note` 等 Markdown directives）可用——pandoc 会解析为无样式 div，内容不丢，但电子书端无视觉效果，慎用于关键信息
 - 章间互链用相对路径：`[上一章](./02-tool-use.md)`（Starlight 自动转 html 链接；电子书跨章锚点 M4 校对时统一核验）
 - 代码块标注语言（` ```ts `、` ```bash `），三端高亮/语义都依赖它
