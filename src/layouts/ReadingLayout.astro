@@ -21,7 +21,7 @@ const ch = chFlat[idx]
 const prevCh = chFlat[idx - 1]
 const nextCh = chFlat[idx + 1]
 
-const h2s = headings.filter((h) => h.depth === 2)
+const tocItems = headings.filter((h) => h.depth === 2 || h.depth === 3)
 ---
 
 <BaseLayout title={title} description={description}>
@@ -81,11 +81,11 @@ const h2s = headings.filter((h) => h.depth === 2)
         </nav>
       </article>
 
-      {h2s.length > 0 && (
+      {tocItems.length > 0 && (
         <nav class="docs-toc" aria-label="本页目录">
           <div class="toc-label">本页目录</div>
-          {h2s.map((h, i) => (
-            <a href={`#${h.slug}`} class={`toc-item${i === 0 ? ' active' : ''}`} data-toc>
+          {tocItems.map((h, i) => (
+            <a href={`#${h.slug}`} class={`toc-item toc-h${h.depth}${i === 0 ? ' active' : ''}`} data-toc>
               {h.text}
             </a>
           ))}
@@ -202,5 +202,14 @@ const h2s = headings.filter((h) => h.depth === 2)
     }
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
+  })();
+
+  // bring the active chapter into view inside the (independently scrolling) sidebar
+  (function () {
+    var sidebar = document.querySelector('.docs-sidebar');
+    var active = sidebar && sidebar.querySelector('.sidebar-item[aria-current="page"]');
+    if (!sidebar || !active) return;
+    var target = active.offsetTop - sidebar.clientHeight / 2 + active.clientHeight / 2;
+    sidebar.scrollTop = Math.max(0, target);
   })();
 </script>

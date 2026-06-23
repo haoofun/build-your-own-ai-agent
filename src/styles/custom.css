@@ -527,6 +527,13 @@ img, svg { display: block; }
   font-weight: 600;
 }
 .sidebar-item-inner { display: flex; align-items: center; gap: 8px; }
+.sidebar-status {
+  width: 6px; height: 6px; border-radius: 50%; flex: none;
+  box-sizing: border-box;
+}
+.sidebar-status.s-writing { background: var(--warning); }
+.sidebar-status.s-planned { background: transparent; border: 1px solid var(--border-strong); }
+.sidebar-status.s-published { background: var(--text-1); }
 .sidebar-item-num {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
@@ -538,7 +545,7 @@ img, svg { display: block; }
 .sidebar-item-milestone {
   display: block;
   margin-top: 3px;
-  padding-left: 22px;
+  padding-left: 36px;
   font-size: var(--text-2xs);
   line-height: 1.5;
   color: var(--text-3);
@@ -564,6 +571,13 @@ img, svg { display: block; }
 }
 .toc-item:hover { color: var(--text-2); }
 .toc-item.active { color: var(--text-1); font-weight: 600; }
+.toc-item.toc-h3 {
+  padding-left: 12px;
+  font-size: var(--text-xs);
+  border-left: 1px solid var(--border);
+  margin-left: 1px;
+}
+.toc-item.toc-h3.active { border-left-color: var(--text-1); }
 
 /* ---- 文章头部 ----------------------------------------------------------- */
 .chapter-eyebrow {

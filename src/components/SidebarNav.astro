@@ -1,5 +1,5 @@
 ---
-import { PARTS, SLUG_TO_N, N_TO_SLUG } from '../data/chapters'
+import { PARTS, SLUG_TO_N, N_TO_SLUG, chapterStatus, STATUS_META } from '../data/chapters'
 
 interface Props {
   activeSlug?: string
@@ -26,6 +26,7 @@ const activeN = activeSlug ? SLUG_TO_N[activeSlug] : undefined
         {group.chapters.map((ch) => {
           const chSlug = N_TO_SLUG[ch.n]
           const isActive = ch.n === activeN
+          const status = chapterStatus(ch.n)
           return (
             <a
               href={chSlug ? `/${chSlug}` : '#'}
@@ -33,6 +34,7 @@ const activeN = activeSlug ? SLUG_TO_N[activeSlug] : undefined
               aria-current={isActive ? 'page' : undefined}
             >
               <span class="sidebar-item-inner">
+                <span class={`sidebar-status s-${status}`} title={STATUS_META[status].label} aria-label={STATUS_META[status].label}></span>
                 <span class="sidebar-item-num">{ch.n}</span>
                 <span class="sidebar-item-label">{ch.t}</span>
                 {ch.m && (
