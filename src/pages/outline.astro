@@ -2,23 +2,42 @@
 import BaseLayout from '../layouts/BaseLayout.astro'
 import SiteHeader from '../components/SiteHeader.astro'
 import Footer from '../components/Footer.astro'
-import { PARTS, N_TO_SLUG } from '../data/chapters'
+import { PARTS, N_TO_SLUG, chapterStatus, STATUS_META } from '../data/chapters'
+
+const stages = ['为什么需要它', '原理拆解', '动手实现', '跑起来看效果', '练习与延伸']
 ---
 
 <BaseLayout
   title="课程大纲 — Build Your Own AI Agent"
-  description="16 章 + 附录，从一次 API 调用到一个约 2500 行的编码 agent"
+  description="16 章 + 3 附录的完整大纲与写作进度：从一次 API 调用到一个约 2500 行的编码 agent"
 >
   <SiteHeader />
 
   <main class="outline-main" id="main-content">
     <div class="outline-inner">
-      <div class="outline-eyebrow">// 课程大纲 v0.1 · 16 章 + 附录</div>
+      <div class="outline-eyebrow">// 课程大纲 · 16 章 + 3 附录</div>
       <h1 class="outline-title">从一次 API 调用，到一个 ~2500 行的编码 agent</h1>
       <p class="outline-lead">
-        每章固定结构：<strong>为什么需要它 → 原理拆解 → 动手实现 → 跑起来看效果 → 练习与延伸</strong>。
-        每章结束项目必须可运行，且比上一章明显更强，代码按章打 git tag。
+        完整章节地图与写作进度。每章固定五段式，结束项目必须可运行、且比上一章明显更强，代码按章打 git&nbsp;tag。
       </p>
+
+      <div class="outline-contract">
+        <div class="contract-label">每章结构</div>
+        <ol class="contract-stages">
+          {stages.map((s, i) => (
+            <li><span class="contract-n">{i + 1}</span>{s}</li>
+          ))}
+        </ol>
+      </div>
+
+      <div class="outline-status">
+        <span class="status-note">全书写作中：spike 周已跑通核心能力链，正在写第 0–5 章。下方状态会随章节上线更新。</span>
+        <div class="status-legend">
+          <span class="legend-item"><span class="dot dot-writing"></span>写作中</span>
+          <span class="legend-item"><span class="dot dot-planned"></span>规划中</span>
+          <span class="legend-item"><span class="dot dot-published"></span>可读</span>
+        </div>
+      </div>
 
       <div class="outline-parts">
         {PARTS.map((part) => (
@@ -31,16 +50,18 @@ import { PARTS, N_TO_SLUG } from '../data/chapters'
 
             {part.chapters.map((ch) => {
               const slug = N_TO_SLUG[ch.n]
-              const Tag = slug ? 'a' : 'div'
+              const status = chapterStatus(ch.n)
               return (
-                <Tag
-                  href={slug ? `/${slug}` : undefined}
-                  class="outline-chapter"
-                  data-available={slug ? 'true' : undefined}
-                >
+                <a href={`/${slug}`} class="outline-chapter" data-status={status}>
                   <span class="outline-chapter-n">{ch.n}</span>
                   <span class="outline-chapter-body">
-                    <span class="outline-chapter-title">{ch.t}</span>
+                    <span class="outline-chapter-head">
+                      <span class="outline-chapter-title">{ch.t}</span>
+                      <span class="outline-chapter-status">
+                        <span class={`dot dot-${status}`}></span>
+                        {STATUS_META[status].label}
+                      </span>
+                    </span>
                     {ch.m && (
                       <span class="outline-chapter-milestone">
                         <span class="outline-chapter-arrow">里程碑 →</span>
@@ -51,7 +72,7 @@ import { PARTS, N_TO_SLUG } from '../data/chapters'
                       <span class="outline-chapter-desc">{ch.desc}</span>
                     )}
                   </span>
-                </Tag>
+                </a>
               )
             })}
           </section>
@@ -64,13 +85,9 @@ import { PARTS, N_TO_SLUG } from '../data/chapters'
 </BaseLayout>
 
 <style>
-  .outline-main {
-    padding: 56px 24px 96px;
-  }
-  .outline-inner {
-    max-width: 720px;
-    margin: 0 auto;
-  }
+  .outline-main { padding: 56px 24px 96px; }
+  .outline-inner { max-width: 720px; margin: 0 auto; }
+
   .outline-eyebrow {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
@@ -89,18 +106,83 @@ import { PARTS, N_TO_SLUG } from '../data/chapters'
     font-size: var(--text-body);
     line-height: 1.75;
     color: var(--text-2);
-    margin: 0 0 48px;
-  }
-  .outline-lead strong {
-    color: var(--text-1);
-    font-weight: 600;
+    margin: 0 0 28px;
   }
 
-  .outline-parts {
-    display: flex;
-    flex-direction: column;
-    gap: 40px;
+  /* ── 五段式契约 ────────────────────────────────────────────── */
+  .outline-contract {
+    padding: 16px 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-alt);
+    margin-bottom: 20px;
   }
+  .contract-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+    margin-bottom: 12px;
+  }
+  .contract-stages {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .contract-stages li {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: var(--text-sm);
+    color: var(--text-2);
+  }
+  .contract-n {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+    width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    flex: none;
+  }
+
+  /* ── 状态与图例 ────────────────────────────────────────────── */
+  .outline-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .status-note {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.6;
+    color: var(--text-3);
+    flex: 1;
+    min-width: 240px;
+  }
+  .status-legend { display: flex; gap: 14px; flex: none; }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: var(--text-xs);
+    color: var(--text-3);
+  }
+
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+  .dot-writing { background: var(--warning); }
+  .dot-planned { background: transparent; border: 1px solid var(--border-strong); }
+  .dot-published { background: var(--text-1); }
+
+  /* ── parts ─────────────────────────────────────────────────── */
+  .outline-parts { display: flex; flex-direction: column; gap: 40px; }
 
   .outline-part-header {
     display: flex;
@@ -109,12 +191,9 @@ import { PARTS, N_TO_SLUG } from '../data/chapters'
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 4px;
+    flex-wrap: wrap;
   }
-  .outline-part-num {
-    font-family: var(--font-mono);
-    font-size: var(--text-2xs);
-    color: var(--text-3);
-  }
+  .outline-part-num { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3); }
   .outline-part-title {
     font-size: var(--text-h3);
     font-weight: 600;
@@ -122,34 +201,36 @@ import { PARTS, N_TO_SLUG } from '../data/chapters'
     color: var(--text-1);
     margin: 0;
   }
-  .outline-part-sub {
-    font-size: var(--text-sm);
-    color: var(--text-3);
-  }
+  .outline-part-sub { font-size: var(--text-sm); color: var(--text-3); }
 
+  /* ── chapter row ───────────────────────────────────────────── */
   .outline-chapter {
     display: grid;
     grid-template-columns: 28px 1fr;
     gap: 16px;
     align-items: baseline;
-    padding: 12px 8px;
+    padding: 14px 8px;
     border-radius: var(--radius-sm);
     text-decoration: none;
-    transition: background var(--duration-fast) var(--ease);
     color: inherit;
+    transition: background var(--duration-fast) var(--ease);
   }
-  a.outline-chapter:hover {
-    background: var(--bg-soft);
-  }
+  .outline-chapter:hover { background: var(--bg-soft); }
+  .outline-chapter[data-status='planned'] { opacity: 0.78; }
+  .outline-chapter[data-status='planned']:hover { opacity: 1; }
+
   .outline-chapter-n {
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     color: var(--text-3);
   }
-  .outline-chapter-body {
+  .outline-chapter-body { display: flex; flex-direction: column; gap: 5px; }
+
+  .outline-chapter-head {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
   }
   .outline-chapter-title {
     font-size: var(--text-body);
@@ -158,10 +239,17 @@ import { PARTS, N_TO_SLUG } from '../data/chapters'
     letter-spacing: -0.01em;
     line-height: 1.4;
   }
-  div.outline-chapter .outline-chapter-title {
+  .outline-chapter-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
     color: var(--text-3);
-    font-weight: 400;
+    transform: translateY(-1px);
   }
+
   .outline-chapter-milestone {
     display: flex;
     align-items: baseline;
@@ -180,5 +268,10 @@ import { PARTS, N_TO_SLUG } from '../data/chapters'
     font-size: var(--text-sm);
     color: var(--text-3);
     line-height: 1.6;
+  }
+
+  @media (max-width: 560px) {
+    .outline-chapter-head { flex-direction: column; gap: 4px; }
+    .outline-chapter-status { transform: none; }
   }
 </style>

@@ -3,10 +3,28 @@ import BaseLayout from '../layouts/BaseLayout.astro'
 import SiteHeader from '../components/SiteHeader.astro'
 import Footer from '../components/Footer.astro'
 
+const positioning = [
+  {
+    vs: '对标 · 付费课',
+    lead: '免费，而且走得更深。',
+    body: 'CodeCrafters 的《Build your own Claude Code》止步于 Read / Write / Bash + 基础 loop。本书免费开源，一路走到上下文压缩、子 agent、MCP、skills、评测——多数教程停下的地方，正是这本书的后半程。',
+  },
+  {
+    vs: '对标 · 成品导读',
+    lead: '从空文件渐进式构建，不是逆向导读。',
+    body: '不像 learn-claude-code 或成品导读式项目那样摊开成品代码讲解。本书每一章从上一章的可运行版本出发，只加一个能力，代码按章打 git tag，随时能 diff 对照、逐行看懂。',
+  },
+  {
+    vs: '对标 · 使用教程',
+    lead: '讲内部机制，不是用法。',
+    body: 'tool use 就是一段 JSON、loop 就是重发数组、MCP 就是 JSON-RPC——把这些「黑魔法」拆成你能亲手复刻的协议，而不是教你怎么用现成的 agent 工具。',
+  },
+]
+
 const siblings = [
   { t: 'Build your own Redis', d: '从零实现一个支持并发的内存数据库' },
   { t: 'Build your own Git', d: '复刻对象存储、commit 与分支模型' },
-  { t: 'Build your own Docker', d: '用 namespace/cgroup 手写容器运行时' },
+  { t: 'Build your own Docker', d: '用 namespace / cgroup 手写容器运行时' },
   { t: 'Build your own Shell', d: '实现一个能跑管道与内建命令的 shell' },
   { t: 'Build your own HTTP Server', d: '从 socket 起手写一个 Web 服务器' },
   { t: 'Build your own Interpreter', d: '为一门小语言写词法、语法与求值器' },
@@ -22,9 +40,7 @@ const siblings = [
   <main class="about-main" id="main-content">
     <div class="about-inner">
       <div class="about-eyebrow">// 关于本项目</div>
-
       <h1 class="about-title">一本免费、开源的「从零复刻」教程</h1>
-
       <p class="about-lead">
         《Build Your Own AI Agent》是一本 <strong>build-your-own-x</strong> 风格的教学项目：用
         ~2500 行 TypeScript、不依赖任何 agent 框架，渐进式地手写出一个具备 agent loop、文件读写、shell
@@ -32,12 +48,21 @@ const siblings = [
       </p>
 
       <div class="about-cta-row">
-        <a href="https://build-your-own-ai-agent.com" target="_blank" rel="noopener" class="btn btn-primary">
-          访问 build-your-own-ai-agent.com
-        </a>
-        <a href="https://github.com/haoofun/build-your-own-ai-agent" target="_blank" rel="noopener" class="btn btn-secondary">
-          在 GitHub 查看
-        </a>
+        <a href="/00-intro" class="btn btn-primary">开始阅读</a>
+        <a href="/outline" class="btn btn-secondary">查看课程大纲</a>
+        <a href="https://github.com/haoofun/build-your-own-ai-agent" target="_blank" rel="noopener" class="btn btn-secondary">在 GitHub 查看</a>
+      </div>
+
+      <h2 class="about-h2">和同类的区别</h2>
+      <div class="pos-list">
+        {positioning.map((p) => (
+          <div class="pos-row">
+            <div class="pos-vs">{p.vs}</div>
+            <div class="pos-body">
+              <strong>{p.lead}</strong> {p.body}
+            </div>
+          </div>
+        ))}
       </div>
 
       <h2 class="about-h2">许可</h2>
@@ -52,21 +77,19 @@ const siblings = [
         </div>
       </div>
 
-      <h2 class="about-h2">"Build Your Own X" 系列</h2>
+      <h2 class="about-h2">「Build Your Own X」系列</h2>
       <p class="about-series-lead">
-        本项目属于经典的「亲手复刻」流派——通过从零重写一个你每天在用的工具，真正理解它。下面是同流派的一些代表作，收录于
-        <a href="https://github.com/codecrafters-io/build-your-own-x" target="_blank" rel="noopener">
-          github.com/codecrafters-io/build-your-own-x
-        </a>：
+        本项目属于经典的「亲手复刻」流派——通过从零重写一个你每天在用的工具，真正理解它。下面是同流派的代表作，均收录于
+        <a href="https://github.com/codecrafters-io/build-your-own-x" target="_blank" rel="noopener">codecrafters-io/build-your-own-x</a>：
       </p>
-      <div class="siblings-grid">
+      <ul class="siblings-list">
         {siblings.map((s) => (
-          <div class="sibling-card">
-            <div class="sibling-title">{s.t}</div>
-            <div class="sibling-desc">{s.d}</div>
-          </div>
+          <li class="sibling-row">
+            <span class="sibling-title">{s.t}</span>
+            <span class="sibling-desc">{s.d}</span>
+          </li>
         ))}
-      </div>
+      </ul>
 
       <div class="about-footer-note">
         <span>// 书稿文字 CC BY-NC-SA 4.0 · 代码 MIT · © 2026 haoo</span>
@@ -112,10 +135,32 @@ const siblings = [
     letter-spacing: -0.015em;
     line-height: 1.4;
     color: var(--text-1);
-    margin: 0 0 12px;
+    margin: 0 0 16px;
   }
 
-  .license-rows { display: flex; flex-direction: column; gap: 10px; margin-bottom: 48px; }
+  /* ── 定位 / 和同类的区别 ───────────────────────────────────── */
+  .pos-list { margin: 0 0 52px; }
+  .pos-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px 28px;
+    padding: 20px 0;
+    border-top: 1px solid var(--border);
+  }
+  .pos-row:last-child { border-bottom: 1px solid var(--border); }
+  @media (max-width: 600px) { .pos-row { grid-template-columns: 1fr; gap: 8px; } }
+  .pos-vs {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+    line-height: 1.5;
+    padding-top: 3px;
+  }
+  .pos-body { font-size: var(--text-sm); line-height: 1.7; color: var(--text-2); }
+  .pos-body strong { color: var(--text-1); font-weight: 600; }
+
+  /* ── 许可 ──────────────────────────────────────────────────── */
+  .license-rows { display: flex; flex-direction: column; gap: 10px; margin-bottom: 52px; }
   .license-row {
     display: flex; align-items: center; gap: 12px;
     font-size: var(--text-body); color: var(--text-2);
@@ -129,9 +174,10 @@ const siblings = [
     flex: none;
   }
 
+  /* ── BYOX 系列 ─────────────────────────────────────────────── */
   .about-series-lead {
     font-size: var(--text-body); line-height: 1.75;
-    color: var(--text-2); margin: 0 0 20px;
+    color: var(--text-2); margin: 0 0 16px;
   }
   .about-series-lead a {
     color: var(--text-1); text-decoration: underline;
@@ -140,20 +186,21 @@ const siblings = [
   }
   .about-series-lead a:hover { text-decoration-color: var(--text-1); }
 
-  .siblings-grid {
-    display: grid; grid-template-columns: repeat(2, 1fr);
-    gap: 12px; margin-bottom: 48px;
+  .siblings-list { list-style: none; margin: 0 0 52px; padding: 0; }
+  .sibling-row {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 12px 2px;
+    border-top: 1px solid var(--border);
   }
-  @media (max-width: 600px) { .siblings-grid { grid-template-columns: 1fr; } }
-  .sibling-card {
-    padding: 16px 20px;
-    border: 1px solid var(--border); border-radius: var(--radius-md);
-    background: var(--bg-alt);
-    transition: border-color 0.15s;
-  }
-  .sibling-card:hover { border-color: var(--border-strong); }
-  .sibling-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
+  .sibling-row:last-child { border-bottom: 1px solid var(--border); }
+  .sibling-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-1); flex: none; min-width: 200px; }
   .sibling-desc { font-size: var(--text-sm); color: var(--text-3); line-height: 1.5; }
+  @media (max-width: 520px) {
+    .sibling-row { flex-direction: column; gap: 3px; }
+    .sibling-title { min-width: 0; }
+  }
 
   .about-footer-note {
     display: flex; flex-direction: column; gap: 4px;

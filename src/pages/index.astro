@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro'
 import SiteHeader from '../components/SiteHeader.astro'
 import Footer from '../components/Footer.astro'
 import CliDemo from '../components/CliDemo'
-import { PARTS, N_TO_SLUG } from '../data/chapters'
+import { PARTS, N_TO_SLUG, chapterStatus } from '../data/chapters'
 
 const ladder = PARTS.filter((p) => p.part !== '附录')
 ---
@@ -55,13 +55,16 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
                 {part.sub && <span class="part-sub">· {part.sub}</span>}
               </div>
               <div class="rungs">
-                {part.chapters.map((ch) => (
-                  <a class="rung" href={`/${N_TO_SLUG[ch.n]}`}>
-                    <span class="rung-n">{ch.n}</span>
-                    <span class="rung-title">{ch.t}</span>
-                    <span class="rung-m">{ch.m}</span>
-                  </a>
-                ))}
+                {part.chapters.map((ch) => {
+                  const st = chapterStatus(ch.n)
+                  return (
+                    <a class="rung" href={`/${N_TO_SLUG[ch.n]}`} data-status={st}>
+                      <span class="rung-n">{ch.n}</span>
+                      <span class="rung-title">{ch.t}{st === 'writing' && <span class="rung-dot" title="写作中"></span>}</span>
+                      <span class="rung-m">{ch.m}</span>
+                    </a>
+                  )
+                })}
               </div>
             </div>
           ))}
@@ -290,6 +293,14 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
     color: var(--text-2);
   }
   .rung-m::before { content: '→ '; color: var(--text-3); }
+  .rung-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--warning);
+    margin-left: 8px;
+    vertical-align: middle;
+  }
 
   .roadmap-more {
     display: inline-block;

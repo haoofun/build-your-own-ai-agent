@@ -108,3 +108,22 @@ export const SLUG_TO_N: Record<string, string> = {
 export const N_TO_SLUG: Record<string, string> = Object.fromEntries(
   Object.entries(SLUG_TO_N).map(([slug, n]) => [n, slug])
 )
+
+// 章节写作状态（单源）。章节上线后把对应章号从 WRITING 移到 PUBLISHED 即可，
+// 大纲页的进度表与首页路线图的状态点都读这里。
+export type ChapterStatus = 'writing' | 'planned' | 'published'
+
+const PUBLISHED = new Set<string>([])
+const WRITING = new Set<string>(['00', '01', '02', '03', '04', '05'])
+
+export function chapterStatus(n: string): ChapterStatus {
+  if (PUBLISHED.has(n)) return 'published'
+  if (WRITING.has(n)) return 'writing'
+  return 'planned'
+}
+
+export const STATUS_META: Record<ChapterStatus, { label: string }> = {
+  writing: { label: '写作中' },
+  planned: { label: '规划中' },
+  published: { label: '可读' },
+}
