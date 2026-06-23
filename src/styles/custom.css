@@ -223,6 +223,98 @@ img, svg { display: block; }
   color: inherit;
 }
 
+/* ---- Shiki 双主题：token 颜色随主题切换，代码面背景仍用 bg-soft ---------- */
+.prose .astro-code,
+.prose .astro-code span { color: var(--shiki-light); }
+:root[data-theme='dark'] .prose .astro-code,
+:root[data-theme='dark'] .prose .astro-code span { color: var(--shiki-dark); }
+
+/* ---- 代码块注记：diff / 行高亮 / 聚焦（@shikijs/transformers）---------- */
+.prose pre.astro-code code { display: grid; }
+.prose pre.astro-code .line { position: relative; }
+.prose .astro-code .line.diff.add { background: rgba(34, 197, 94, 0.13); }
+.prose .astro-code .line.diff.remove { background: rgba(248, 113, 113, 0.12); }
+:root[data-theme='dark'] .prose .astro-code .line.diff.add { background: rgba(74, 222, 128, 0.15); }
+:root[data-theme='dark'] .prose .astro-code .line.diff.remove { background: rgba(248, 113, 113, 0.15); }
+.prose .astro-code .line.diff::before { position: absolute; left: -0.9rem; font-weight: 600; }
+.prose .astro-code .line.diff.add::before { content: '+'; color: #16a34a; }
+.prose .astro-code .line.diff.remove::before { content: '-'; color: var(--danger); }
+:root[data-theme='dark'] .prose .astro-code .line.diff.add::before { color: #4ade80; }
+.prose .astro-code .line.highlighted { background: var(--bg-alt); }
+:root[data-theme='dark'] .prose .astro-code .line.highlighted { background: rgba(255, 255, 255, 0.045); }
+.prose .astro-code.has-focused .line:not(.focused) {
+  opacity: 0.35;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+.prose .astro-code.has-focused:hover .line:not(.focused) { opacity: 1; }
+
+/* ---- 代码块 chrome：语言标签（常驻右上）+ 悬停复制按钮 ------------------- */
+.prose pre.astro-code { position: relative; }
+.code-lang {
+  position: absolute;
+  top: 9px; right: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+.code-copy {
+  position: absolute;
+  top: 7px; right: 8px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease),
+              border-color var(--duration-fast) var(--ease),
+              color var(--duration-fast) var(--ease);
+}
+.prose pre.astro-code:hover .code-copy { opacity: 1; }
+.prose pre.astro-code:hover .code-lang { opacity: 0; }
+.code-copy:hover { color: var(--text-1); border-color: var(--text-1); }
+@media (hover: none) {
+  .code-copy { opacity: 1; }
+  .code-lang { opacity: 0; }
+}
+
+/* ---- 教学孤岛（StaticIsland 静态基座 / AgentTrace 容器）----------------- */
+.prose .island {
+  margin: 1.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  overflow: hidden;
+}
+.island-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+.island-dots { display: flex; gap: 6px; }
+.island-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--border-strong); display: block; }
+.island-name { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3); }
+.island-body { padding: 14px; }
+.island-caption {
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-alt);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  line-height: 1.6;
+}
+/* 孤岛内部的 pre 不继承 .prose pre 的边框/外边距 */
+.prose .island pre { margin: 0; border: 0; border-radius: 0; }
+
 .prose blockquote {
   margin: 1rem 0;
   padding: 0.5rem 1rem;

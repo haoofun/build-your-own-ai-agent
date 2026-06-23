@@ -137,6 +137,35 @@ const h2s = headings.filter((h) => h.depth === 2)
     });
   })();
 
+  // code block chrome: lang label + copy button
+  (function () {
+    var blocks = document.querySelectorAll('.prose pre.astro-code');
+    blocks.forEach(function (pre) {
+      var lang = pre.getAttribute('data-language') || '';
+      if (lang && lang !== 'plaintext') {
+        var label = document.createElement('span');
+        label.className = 'code-lang';
+        label.textContent = lang;
+        pre.appendChild(label);
+      }
+      var btn = document.createElement('button');
+      btn.className = 'code-copy';
+      btn.type = 'button';
+      btn.textContent = '复制';
+      btn.setAttribute('aria-label', '复制代码');
+      btn.addEventListener('click', function () {
+        var code = pre.querySelector('code');
+        var text = code ? code.innerText : pre.innerText;
+        navigator.clipboard.writeText(text).then(function () {
+          btn.textContent = '已复制';
+          btn.classList.add('copied');
+          setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1600);
+        });
+      });
+      pre.appendChild(btn);
+    });
+  })();
+
   // reading progress bar
   (function () {
     var bar = document.getElementById('reading-bar');

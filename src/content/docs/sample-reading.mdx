@@ -1,0 +1,68 @@
+---
+title: '设计样章 · 阅读体验 fixture'
+description: '用于设计与验证沉浸式阅读体验的样章——非正式教学内容，不进正式章节'
+---
+
+import Callout from '../../components/Callout'
+import StaticIsland from '../../components/StaticIsland'
+
+<Callout type="info" title="设计 fixture">
+这是一个**设计样章**，只为压测阅读排版——散文、代码块、callout、孤岛、列表、引用。**不是正式教学内容**，也不进 sidebar 与大纲。
+</Callout>
+
+一句话讲清 agent loop 的形状：每一轮，模型决定调用一个工具，宿主执行它，把结果回灌进 `messages`，循环继续——直到模型不再请求工具。这本书的后半程，全部建立在这个再简单不过的循环之上。
+
+## 为什么需要它
+
+普通的一次 API 调用是「一问一答」：你发 `messages`，拿回一段文本，结束。它没法跑命令、读文件、验证自己的输出。要让模型真正**做事**，你得把它放进一个循环里，并给它一组工具。区别只有一处，却是全部：
+
+- **chat**：一次前向传播，输出文本，到此为止。
+- **agent**：同一个模型，外面套一层 loop——执行、观察、再执行。
+- 终止条件由模型自己给出：当它不再请求工具，这一轮就是答案。
+
+把这件事写成代码，核心不过十几行：
+
+```ts
+// agent loop 的核心：每一轮都重发整个 messages 数组
+async function runAgent(messages: Message[]) {
+  while (true) {
+    const res = await callModel(messages)
+    messages.push(res.message)
+    if (res.stopReason === 'end_turn') return res // [!code --]
+    if (res.stopReason !== 'tool_use') return res // [!code ++]
+    const results = await runTools(res.toolCalls)
+    messages.push(...results)
+  }
+}
+```
+
+<Callout type="warning" title="一个坑">
+`while (true)` 没有上界。真实实现里必须有 `maxTurns` 兜底——否则模型反复请求工具时会无限循环，把你的 API 账单烧穿。
+</Callout>
+
+## 原理拆解
+
+「工具」并不神秘：它就是一段 **JSON Schema 声明** + 一个**执行函数**。模型只负责「决定调用哪个、传什么参数」，真正的执行永远在你的代码里。下面这个孤岛，把一轮只读问答完整走了一遍：
+
+<StaticIsland caption="一轮只读问答：模型决定读文件 → 观察结果 → 作答。读操作无需确认。" />
+
+注意，整轮里模型从没碰过文件系统——它只是输出了一段「我想调用 `read_file`」的 JSON，是 loop 替它执行、再把结果喂回去的。这条边界，是后面权限系统能成立的根基。
+
+## 动手实现
+
+`read_file` 工具的执行函数，朴素到几乎无聊——这正是重点：
+
+```ts
+function readFile({ path }: { path: string }): ToolResult {
+  const text = fs.readFileSync(path, 'utf8')
+  return { ok: true, content: text } // [!code highlight]
+}
+```
+
+> 工具 = 一段 JSON 声明 + 一个执行函数。模型决定「调用」，执行永远在你这边。把这条记牢，MCP、子 agent、权限确认都只是它的变奏。
+
+## 练习与延伸
+
+- 给 loop 加 `maxTurns` 上界，并在到达时返回一条说明而不是静默退出。
+- 把 `stopReason` 的判断改成显式白名单，想清楚 `max_tokens` 截断该怎么处理。
+- 给只读工具集（`read_file`、`grep`）结构性免审，写操作仍需用户确认。

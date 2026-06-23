@@ -1,6 +1,11 @@
 import { defineConfig } from 'astro/config'
 import react from '@astrojs/react'
 import mdx from '@astrojs/mdx'
+import {
+  transformerNotationDiff,
+  transformerNotationHighlight,
+  transformerNotationFocus,
+} from '@shikijs/transformers'
 
 // 章节计划——单一来源，供自定义布局、侧栏、llms.txt 生成使用
 // 文件不存在的章节由路由层跳过（写一章、上线一章，无需改配置）
@@ -41,6 +46,21 @@ export const CHAPTER_PLAN: Record<string, [file: string, label: string][]> = {
 
 export default defineConfig({
   site: 'https://build-your-own-ai-agent.com',
+  markdown: {
+    // 双主题：token 颜色由 Shiki 出（明 github-light / 暗 github-dark），
+    // 代码面背景仍用设计 token（bg-soft 浅灰），不用 Shiki 自带的深色终端底。
+    shikiConfig: {
+      themes: { light: 'github-light', dark: 'github-dark' },
+      defaultColor: false,
+      // 用 // [!code --/++]、// [!code highlight]、// [!code focus] 注记
+      // 在语法高亮之上叠 diff / 行高亮 / 聚焦——ch04 讲 Write/Edit/diff 的刚需。
+      transformers: [
+        transformerNotationDiff({ matchAlgorithm: 'v3' }),
+        transformerNotationHighlight({ matchAlgorithm: 'v3' }),
+        transformerNotationFocus({ matchAlgorithm: 'v3' }),
+      ],
+    },
+  },
   integrations: [
     mdx(),
     react(),
