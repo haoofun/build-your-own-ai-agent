@@ -1,16 +1,10 @@
-import { existsSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'astro/config'
-import starlight from '@astrojs/starlight'
 import react from '@astrojs/react'
-import starlightLlmsTxt from 'starlight-llms-txt'
+import mdx from '@astrojs/mdx'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const docsDir = resolve(__dirname, 'src/content/docs')
-
-/** 规划中的完整目录；文件尚不存在的章节自动隐藏（写一章、上线一章，无需改配置） */
-const plan: Record<string, [file: string, label: string][]> = {
+// 章节计划——单一来源，供自定义布局、侧栏、llms.txt 生成使用
+// 文件不存在的章节由路由层跳过（写一章、上线一章，无需改配置）
+export const CHAPTER_PLAN: Record<string, [file: string, label: string][]> = {
   '第〇部分 · 起点': [
     ['00-intro', '00 · 导言：把黑盒拆开'],
     ['01-first-api-call', '01 · 一次 API 调用'],
@@ -45,52 +39,10 @@ const plan: Record<string, [file: string, label: string][]> = {
   ],
 }
 
-const chapterSidebar = Object.entries(plan)
-  .map(([label, items]) => ({
-    label,
-    items: items
-      .filter(
-        ([file]) =>
-          existsSync(resolve(docsDir, `${file}.md`)) ||
-          existsSync(resolve(docsDir, `${file}.mdx`)),
-      )
-      .map(([file, label]) => ({ label, link: `/${file}` })),
-  }))
-  .filter((group) => group.items.length > 0)
-
 export default defineConfig({
   site: 'https://build-your-own-ai-agent.com',
   integrations: [
-    starlight({
-      title: 'Build Your Own AI Agent',
-      description:
-        '从零复刻一个 Claude Code —— 用 TypeScript 手写一个编码 agent，不用任何 agent 框架',
-      plugins: [starlightLlmsTxt()],
-      locales: {
-        root: { label: '中文', lang: 'zh-CN' },
-      },
-      sidebar: [
-        { label: '大纲', link: '/outline' },
-        { label: '关于', link: '/about' },
-        ...chapterSidebar,
-      ],
-      social: {
-        github: 'https://github.com/haoofun/build-your-own-ai-agent',
-      },
-      editLink: {
-        baseUrl:
-          'https://github.com/haoofun/build-your-own-ai-agent/edit/main/src/content/docs/',
-      },
-      customCss: ['./src/styles/custom.css'],
-      head: [
-        {
-          tag: 'link',
-          attrs: { rel: 'stylesheet', href: '/fonts/ibm-plex-sans-sc.css' },
-        },
-      ],
-      lastUpdated: true,
-      pagination: true,
-    }),
+    mdx(),
     react(),
   ],
 })

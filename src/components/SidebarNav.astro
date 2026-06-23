@@ -1,0 +1,53 @@
+---
+import { PARTS, SLUG_TO_N, N_TO_SLUG } from '../data/chapters'
+
+interface Props {
+  activeSlug?: string
+}
+const { activeSlug } = Astro.props
+const activeN = activeSlug ? SLUG_TO_N[activeSlug] : undefined
+---
+
+<aside class="docs-sidebar">
+  <a href="/outline" class="sidebar-outline-link">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+      <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+      <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+    </svg>
+    课程大纲
+  </a>
+
+  {PARTS.map((group) => {
+    const slug = group.chapters[0] && N_TO_SLUG[group.chapters[0].n]
+    return (
+      <div class="sidebar-group">
+        <div class="sidebar-group-label">{group.part} · {group.title}</div>
+        {group.chapters.map((ch) => {
+          const chSlug = N_TO_SLUG[ch.n]
+          const isActive = ch.n === activeN
+          return (
+            <a
+              href={chSlug ? `/${chSlug}` : '#'}
+              class="sidebar-item"
+              aria-current={isActive ? 'page' : undefined}
+            >
+              <span class="sidebar-item-inner">
+                <span class="sidebar-item-num">{ch.n}</span>
+                <span class="sidebar-item-label">{ch.t}</span>
+                {ch.m && (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" title="本章结束时项目可运行" style="flex:none;opacity:0.5">
+                    <rect x="2" y="3" width="20" height="14" rx="2"/><path d="m8 21 4-4 4 4"/><path d="M10 13 8 9l-2 4"/><path d="m14 13 2-4 2 4"/>
+                  </svg>
+                )}
+              </span>
+              {isActive && ch.m && (
+                <span class="sidebar-item-milestone">里程碑 · {ch.m}</span>
+              )}
+            </a>
+          )
+        })}
+      </div>
+    )
+  })}
+</aside>

@@ -1,0 +1,177 @@
+---
+import BaseLayout from './BaseLayout.astro'
+import SiteHeader from '../components/SiteHeader.astro'
+import SidebarNav from '../components/SidebarNav.astro'
+import Footer from '../components/Footer.astro'
+import { CHAPTERS, SLUG_TO_N, N_TO_SLUG } from '../data/chapters'
+
+interface Props {
+  title: string
+  description?: string
+  slug: string
+  headings?: { depth: number; slug: string; text: string }[]
+}
+
+const { title, description, slug, headings = [] } = Astro.props
+
+const n = SLUG_TO_N[slug]
+const chFlat = CHAPTERS
+const idx = chFlat.findIndex((c) => c.n === n)
+const ch = chFlat[idx]
+const prevCh = chFlat[idx - 1]
+const nextCh = chFlat[idx + 1]
+
+const h2s = headings.filter((h) => h.depth === 2)
+---
+
+<BaseLayout title={title} description={description}>
+  <SiteHeader />
+  <div class="docs-layout">
+    <SidebarNav activeSlug={slug} />
+    <div class="docs-main">
+      <div class="reading-progress" aria-hidden="true">
+        <div class="reading-progress-bar" id="reading-bar"></div>
+      </div>
+
+      <article class="docs-article" id="main-content">
+        {ch && (
+          <div class="chapter-eyebrow">
+            <span class="chapter-badge">chapter-{ch.n}</span>
+            <span class="chapter-part-label">{ch.part} · {ch.partTitle}</span>
+          </div>
+        )}
+
+        <h1 class="chapter-title">{title}</h1>
+
+        {ch?.m && (
+          <div class="chapter-milestone">
+            <span class="chapter-milestone-arrow">里程碑 →</span>
+            <span class="chapter-milestone-text">{ch.m}</span>
+          </div>
+        )}
+
+        {ch && (
+          <div class="chapter-copy-bar" id="copy-bar">
+            <span class="chapter-copy-label">// 让你的 agent 带你读这一章</span>
+            <button class="chapter-copy-btn" id="copy-btn" data-cmd={`用《Build Your Own AI Agent》陪读 skill 教我第 ${ch.n} 章《${ch.t}》${ch.m ? `，本章里程碑：${ch.m}` : ''}。先讲原理、再让我自己动手，别直接给完整答案。`} aria-label="复制">
+              <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="20 6 9 17 4 12"/></svg>
+              <span id="copy-label">复制</span>
+            </button>
+          </div>
+        )}
+
+        <div class="prose">
+          <slot />
+        </div>
+
+        <nav class="pager" aria-label="章节导航">
+          {prevCh && N_TO_SLUG[prevCh.n] ? (
+            <a href={`/${N_TO_SLUG[prevCh.n]}`} class="pager-link">
+              <span class="pager-dir">← 上一章</span>
+              <span class="pager-title">{prevCh.n} · {prevCh.t}</span>
+            </a>
+          ) : <div />}
+          {nextCh && N_TO_SLUG[nextCh.n] ? (
+            <a href={`/${N_TO_SLUG[nextCh.n]}`} class="pager-link next">
+              <span class="pager-dir">下一章 →</span>
+              <span class="pager-title">{nextCh.n} · {nextCh.t}</span>
+            </a>
+          ) : <div />}
+        </nav>
+      </article>
+
+      {h2s.length > 0 && (
+        <nav class="docs-toc" aria-label="本页目录">
+          <div class="toc-label">本页目录</div>
+          {h2s.map((h, i) => (
+            <a href={`#${h.slug}`} class={`toc-item${i === 0 ? ' active' : ''}`} data-toc>
+              {h.text}
+            </a>
+          ))}
+        </nav>
+      )}
+    </div>
+  </div>
+
+  <!-- Mobile chapter nav bar (≤900px) -->
+  <nav class="mobile-chapter-nav" aria-label="章节快速导航">
+    {prevCh && N_TO_SLUG[prevCh.n] ? (
+      <a href={`/${N_TO_SLUG[prevCh.n]}`} class="mcn-link mcn-prev">
+        <span class="mcn-dir">← 上一章</span>
+        <span class="mcn-title">{prevCh.t}</span>
+      </a>
+    ) : <span class="mcn-spacer" />}
+    <a href="/outline" class="mcn-outline">大纲</a>
+    {nextCh && N_TO_SLUG[nextCh.n] ? (
+      <a href={`/${N_TO_SLUG[nextCh.n]}`} class="mcn-link mcn-next">
+        <span class="mcn-dir">下一章 →</span>
+        <span class="mcn-title">{nextCh.t}</span>
+      </a>
+    ) : <span class="mcn-spacer" />}
+  </nav>
+
+  <Footer />
+</BaseLayout>
+
+<script is:inline>
+  // copy bar
+  (function () {
+    var btn = document.getElementById('copy-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var cmd = btn.getAttribute('data-cmd') || '';
+      navigator.clipboard.writeText(cmd).then(function () {
+        var iconCopy = btn.querySelector('.icon-copy');
+        var iconCheck = btn.querySelector('.icon-check');
+        var label = document.getElementById('copy-label');
+        if (iconCopy) iconCopy.style.display = 'none';
+        if (iconCheck) iconCheck.style.display = 'block';
+        if (label) label.textContent = '已复制';
+        setTimeout(function () {
+          if (iconCopy) iconCopy.style.display = 'block';
+          if (iconCheck) iconCheck.style.display = 'none';
+          if (label) label.textContent = '复制';
+        }, 1800);
+      });
+    });
+  })();
+
+  // reading progress bar
+  (function () {
+    var bar = document.getElementById('reading-bar');
+    if (!bar) return;
+    var raf = 0;
+    function update() {
+      raf = 0;
+      var doc = document.documentElement;
+      var max = doc.scrollHeight - window.innerHeight;
+      bar.style.transform = 'scaleX(' + (max > 0 ? Math.min(1, window.scrollY / max) : 0) + ')';
+    }
+    window.addEventListener('scroll', function () {
+      if (!raf) raf = requestAnimationFrame(update);
+    }, { passive: true });
+    update();
+  })();
+
+  // TOC active highlight
+  (function () {
+    var items = document.querySelectorAll('[data-toc]');
+    if (!items.length) return;
+    var headings = Array.from(items).map(function (a) {
+      return document.querySelector(a.getAttribute('href'));
+    }).filter(Boolean);
+    function onScroll() {
+      var active = headings[0];
+      headings.forEach(function (h) {
+        if (h && window.scrollY >= h.offsetTop - 100) active = h;
+      });
+      items.forEach(function (a) {
+        var isActive = a.getAttribute('href') === '#' + (active && active.id);
+        a.classList.toggle('active', isActive);
+      });
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  })();
+</script>

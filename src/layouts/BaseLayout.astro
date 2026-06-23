@@ -1,0 +1,54 @@
+---
+import '../styles/custom.css'
+
+interface Props {
+  title?: string
+  description?: string
+  currentPath?: string
+}
+
+const {
+  title = 'Build Your Own AI Agent — 从零复刻一个 Claude Code',
+  description = '用 TypeScript 从零手写一个能改代码、跑命令、自我迭代的编码 agent——不用任何 agent 框架，每章结束都有可运行的成果。',
+  currentPath = Astro.url.pathname,
+} = Astro.props
+---
+
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={`https://build-your-own-ai-agent.com${currentPath}`} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={`https://build-your-own-ai-agent.com${currentPath}`} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/fonts/ibm-plex-sans-sc.css" />
+    <!-- lucide icons -->
+    <script is:inline src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+    <!-- pre-paint theme restore -->
+    <script is:inline>
+      (function () {
+        var s = localStorage.getItem('byoa-theme') || localStorage.getItem('starlight-theme') || 'dark';
+        if (s === 'auto') s = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', s);
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip-to-content" href="#main-content">跳到主要内容</a>
+    <slot />
+    <script is:inline>
+      document.addEventListener('DOMContentLoaded', function () {
+        if (window.lucide) lucide.createIcons();
+      });
+    </script>
+  </body>
+</html>

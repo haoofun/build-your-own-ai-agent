@@ -1,0 +1,184 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+import SiteHeader from '../components/SiteHeader.astro'
+import Footer from '../components/Footer.astro'
+import { PARTS, N_TO_SLUG } from '../data/chapters'
+---
+
+<BaseLayout
+  title="课程大纲 — Build Your Own AI Agent"
+  description="16 章 + 附录，从一次 API 调用到一个约 2500 行的编码 agent"
+>
+  <SiteHeader />
+
+  <main class="outline-main" id="main-content">
+    <div class="outline-inner">
+      <div class="outline-eyebrow">// 课程大纲 v0.1 · 16 章 + 附录</div>
+      <h1 class="outline-title">从一次 API 调用，到一个 ~2500 行的编码 agent</h1>
+      <p class="outline-lead">
+        每章固定结构：<strong>为什么需要它 → 原理拆解 → 动手实现 → 跑起来看效果 → 练习与延伸</strong>。
+        每章结束项目必须可运行，且比上一章明显更强，代码按章打 git tag。
+      </p>
+
+      <div class="outline-parts">
+        {PARTS.map((part) => (
+          <section class="outline-part">
+            <div class="outline-part-header">
+              <span class="outline-part-num">{part.part}</span>
+              <h2 class="outline-part-title">{part.title}</h2>
+              {part.sub && <span class="outline-part-sub">{part.sub}</span>}
+            </div>
+
+            {part.chapters.map((ch) => {
+              const slug = N_TO_SLUG[ch.n]
+              const Tag = slug ? 'a' : 'div'
+              return (
+                <Tag
+                  href={slug ? `/${slug}` : undefined}
+                  class="outline-chapter"
+                  data-available={slug ? 'true' : undefined}
+                >
+                  <span class="outline-chapter-n">{ch.n}</span>
+                  <span class="outline-chapter-body">
+                    <span class="outline-chapter-title">{ch.t}</span>
+                    {ch.m && (
+                      <span class="outline-chapter-milestone">
+                        <span class="outline-chapter-arrow">里程碑 →</span>
+                        {ch.m}
+                      </span>
+                    )}
+                    {ch.desc && (
+                      <span class="outline-chapter-desc">{ch.desc}</span>
+                    )}
+                  </span>
+                </Tag>
+              )
+            })}
+          </section>
+        ))}
+      </div>
+    </div>
+  </main>
+
+  <Footer />
+</BaseLayout>
+
+<style>
+  .outline-main {
+    padding: 56px 24px 96px;
+  }
+  .outline-inner {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .outline-eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--text-3);
+    margin-bottom: 12px;
+  }
+  .outline-title {
+    font-size: var(--text-h1);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-1);
+    line-height: 1.3;
+    margin: 0 0 16px;
+  }
+  .outline-lead {
+    font-size: var(--text-body);
+    line-height: 1.75;
+    color: var(--text-2);
+    margin: 0 0 48px;
+  }
+  .outline-lead strong {
+    color: var(--text-1);
+    font-weight: 600;
+  }
+
+  .outline-parts {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  .outline-part-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .outline-part-num {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+  }
+  .outline-part-title {
+    font-size: var(--text-h3);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-1);
+    margin: 0;
+  }
+  .outline-part-sub {
+    font-size: var(--text-sm);
+    color: var(--text-3);
+  }
+
+  .outline-chapter {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 16px;
+    align-items: baseline;
+    padding: 12px 8px;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    transition: background var(--duration-fast) var(--ease);
+    color: inherit;
+  }
+  a.outline-chapter:hover {
+    background: var(--bg-soft);
+  }
+  .outline-chapter-n {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--text-3);
+  }
+  .outline-chapter-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .outline-chapter-title {
+    font-size: var(--text-body);
+    font-weight: 600;
+    color: var(--text-1);
+    letter-spacing: -0.01em;
+    line-height: 1.4;
+  }
+  div.outline-chapter .outline-chapter-title {
+    color: var(--text-3);
+    font-weight: 400;
+  }
+  .outline-chapter-milestone {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: var(--text-sm);
+    color: var(--text-2);
+    line-height: 1.5;
+  }
+  .outline-chapter-arrow {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+    flex: none;
+  }
+  .outline-chapter-desc {
+    font-size: var(--text-sm);
+    color: var(--text-3);
+    line-height: 1.6;
+  }
+</style>
