@@ -4,6 +4,7 @@ description: '用于设计与验证沉浸式阅读体验的样章——非正式
 ---
 
 import Callout from '../../components/Callout'
+import AgentTrace from '../../components/AgentTrace'
 import StaticIsland from '../../components/StaticIsland'
 
 <Callout type="info" title="设计 fixture">
@@ -42,9 +43,19 @@ async function runAgent(messages: Message[]) {
 
 ## 原理拆解
 
-「工具」并不神秘：它就是一段 **JSON Schema 声明** + 一个**执行函数**。模型只负责「决定调用哪个、传什么参数」，真正的执行永远在你的代码里。下面这个孤岛，把一轮只读问答完整走了一遍：
+「工具」并不神秘：它就是一段 **JSON Schema 声明** + 一个**执行函数**。模型只负责「决定调用哪个、传什么参数」，真正的执行永远在你的代码里。下面这条执行链可以**播放**，也能 ← → **单步**看清每一步是谁发出的——`user` 提问、`assistant` 思考、`tool_use` 调用、`tool_result` 回灌：
 
-<StaticIsland caption="一轮只读问答：模型决定读文件 → 观察结果 → 作答。读操作无需确认。" />
+<AgentTrace
+  client:visible
+  title="只读问答"
+  events={[
+    { role: 'user', text: '读 config.ts，MAX_RETRIES 上限是多少？为什么不能调更高？' },
+    { role: 'assistant', text: '只读问答，我读一下 config.ts 就能答。' },
+    { role: 'tool_use', name: 'read_file', input: { path: 'src/config.ts' } },
+    { role: 'tool_result', exit: 0, text: '// hard-capped at 7 — broker drops messages on the 8th attempt\nexport const MAX_RETRIES = 7;' },
+    { role: 'assistant', final: true, text: '上限是 7。再高会触发 broker 在第 8 次投递时关 socket，消息被静默丢弃——注释有据可查。' },
+  ]}
+/>
 
 注意，整轮里模型从没碰过文件系统——它只是输出了一段「我想调用 `read_file`」的 JSON，是 loop 替它执行、再把结果喂回去的。这条边界，是后面权限系统能成立的根基。
 
@@ -60,6 +71,10 @@ function readFile({ path }: { path: string }): ToolResult {
 ```
 
 > 工具 = 一段 JSON 声明 + 一个执行函数。模型决定「调用」，执行永远在你这边。把这条记牢，MCP、子 agent、权限确认都只是它的变奏。
+
+同一类孤岛在无 JS / 电子书端会降级成**静态形态**（`StaticIsland`）——全展开、可选中、不依赖交互，但同一条链、同一套角色标注：
+
+<StaticIsland title="静态降级形态" subtitle="ebook / no-JS" caption="电子书端：AgentTrace 降级为 StaticIsland，整条链全展开，文本可选中、可重排。" />
 
 ## 练习与延伸
 
