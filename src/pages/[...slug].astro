@@ -3,9 +3,13 @@ import { getCollection, render } from 'astro:content'
 import ReadingLayout from '../layouts/ReadingLayout.astro'
 
 export async function getStaticPaths() {
+  // 这些 slug 有专属设计页（src/pages/*.astro），不走通用阅读路由。
+  // 对应的 content doc 仍留作电子书 / llms 单源，只是不在网站重复出一个路由。
+  const RESERVED_SLUGS = new Set(['outline', 'about'])
   const entries = await getCollection('docs')
   // draft 页仅在 dev 下可路由，生产构建排除（设计样章等不进发布站）
-  const visible = import.meta.env.PROD ? entries.filter((e) => !e.data.draft) : entries
+  const routable = entries.filter((e) => !RESERVED_SLUGS.has(e.slug))
+  const visible = import.meta.env.PROD ? routable.filter((e) => !e.data.draft) : routable
   return visible.map((entry) => ({
     params: { slug: entry.slug },
     props: { entry },

@@ -156,6 +156,38 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
       });
     });
   </script>
+
+  <script is:inline>
+    (function () {
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduce || !('IntersectionObserver' in window)) return; // 默认可见，不 gate
+
+      // 每处揭示贴合它揭示的东西：标题整块、roadmap 按 2 列左右错峰、diff 逐行
+      var groups = [
+        { sel: '.roadmap .section-head, .diff .section-head', stagger: 0, mod: 1 },
+        { sel: '.roadmap .part', stagger: 70, mod: 2 },
+        { sel: '.diff-row', stagger: 50, mod: 4 },
+        { sel: '.agent-band-inner', stagger: 0, mod: 1 },
+      ];
+
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) {
+            e.target.classList.add('reveal-in');
+            io.unobserve(e.target);
+          }
+        });
+      }, { rootMargin: '0px 0px -10% 0px', threshold: 0.12 });
+
+      groups.forEach(function (g) {
+        document.querySelectorAll(g.sel).forEach(function (el, i) {
+          el.classList.add('reveal-init');
+          if (g.stagger) el.style.transitionDelay = (i % g.mod) * g.stagger + 'ms';
+          io.observe(el);
+        });
+      });
+    })();
+  </script>
 </BaseLayout>
 
 <style is:global>
@@ -193,6 +225,23 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
   .hero .tagline strong { color: var(--text-1); font-weight: 600; }
   .cta-row { display: flex; gap: 12px; margin-top: 26px; justify-content: center; flex-wrap: wrap; }
   .hero-demo { margin-top: clamp(36px, 5vw, 52px); text-align: left; }
+
+  /* hero 载入编排：一次性错峰浮入。
+     SSR 安全 —— 默认就可见，动画只在「不要求减弱动效」时叠加；
+     reduced-motion / 不支持时元素保持默认可见，不会 ship 空白。 */
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes hero-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .hero-inner > * { animation: hero-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .hero-inner > .badge    { animation-delay: 0s; }
+    .hero-inner > h1        { animation-delay: 0.07s; }
+    .hero-inner > .subtitle { animation-delay: 0.14s; }
+    .hero-inner > .tagline  { animation-delay: 0.21s; }
+    .hero-inner > .cta-row  { animation-delay: 0.28s; }
+    .hero-inner > .hero-demo{ animation-delay: 0.36s; }
+  }
 
   /* ── shared section heads ─────────────────────────────────────────────── */
   .section-head { max-width: 640px; }
@@ -409,4 +458,16 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
     color: var(--text-3);
     text-align: center;
   }
+
+  /* 章节滚动揭示：默认可见；只有 JS（且未要求减弱动效）才会先加 .reveal-init
+     把元素压成初始隐藏态，再在进入视口时 .reveal-in 浮起。
+     无 JS / 爬虫 / reduced-motion → 永远停在默认可见，不 gate 内容。 */
+  .reveal-init {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+  .reveal-init.reveal-in { opacity: 1; transform: none; }
 </style>

@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
+
+// 克制的 ease-out 入场（无回弹、无弹性）——工程文档气质，不是营销弹跳
+const EASE_OUT = [0.22, 1, 0.36, 1] as const
 
 /* ──────────────────────────────────────────────────────────────────────────
  * 首页 hero 的活 demo —— 一条轴上的三层自洽度：
@@ -89,13 +93,27 @@ const SCENARIOS: Record<Mode, Scenario> = {
   },
 }
 
-const STEP_MS = 560
+const STEP_MS = 480       // 一步与下一步之间的「思考」间隔
+
+// 模拟真实流式：token 成簇到达、节奏不均、偶有网络/批处理停顿。
+// 每拍随机吐 1–3 字；约 1/7 的概率撞上一次 140–360ms 的停顿，其余 18–52ms。
+function streamTick() {
+  const chars = 1 + Math.floor(Math.random() * 3)
+  const stall = Math.random() < 0.14
+  const delay = stall ? 140 + Math.random() * 220 : 18 + Math.random() * 34
+  return { chars, delay }
+}
+
+// 只有模型「生成」的文本会流式；工具输入 / 结果是结构化 I/O，瞬间打印
+const STREAMS = (t?: Step['type']) => t === 'text' || t === 'answer'
 
 interface Line extends Step {
   kind: 'prompt' | 'text' | 'tool' | 'result' | 'denied' | 'answer' | 'plan'
+  streaming?: boolean
 }
 
 export default function CliDemo() {
+  const reduce = useReducedMotion()
   const [mode, setMode] = useState<Mode>('react')
   const scn = SCENARIOS[mode]
 
@@ -104,6 +122,7 @@ export default function CliDemo() {
   const [pending, setPending] = useState<Step | null>(null)
   const [planDone, setPlanDone] = useState(0)
   const [done, setDone] = useState(false)
+  const [typed, setTyped] = useState(0) // 当前流式行已显示的字数
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const reset = (m: Mode) => {
@@ -112,13 +131,14 @@ export default function CliDemo() {
     setPending(null)
     setPlanDone(0)
     setDone(false)
+    setTyped(0)
   }
 
   useEffect(() => { reset(mode) }, [mode])
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [lines, pending, planDone])
+  }, [lines, pending, planDone, typed])
 
   useEffect(() => {
     if (pending || done || step >= scn.script.length) return
@@ -136,6 +156,10 @@ export default function CliDemo() {
       } else if (item.type === 'todo') {
         setPlanDone(item.done ?? 0)
         setStep((s) => s + 1)
+      } else if (STREAMS(item.type) && !reduce) {
+        // assistant 文本 → 流式逐字；推进交给打字 effect，打完才走下一步
+        setTyped(0)
+        setLines((ls) => [...ls, { kind: item.type as Line['kind'], text: item.text, streaming: true }])
       } else {
         setLines((ls) => [...ls, { kind: item.type as Line['kind'], text: item.text }])
         if (item.type === 'answer') setDone(true)
@@ -145,6 +169,22 @@ export default function CliDemo() {
     return () => clearTimeout(t)
   }, [step, pending, done, mode])
 
+  // 流式打字：找到当前 streaming 行，逐块吐字，吐完落定并推进
+  useEffect(() => {
+    const idx = lines.findIndex((l) => l.streaming)
+    if (idx === -1) return
+    const full = lines[idx].text ?? ''
+    if (typed >= full.length) {
+      setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, streaming: false } : l)))
+      if (lines[idx].kind === 'answer') setDone(true)
+      setStep((s) => s + 1)
+      return
+    }
+    const { chars, delay } = streamTick()
+    const t = setTimeout(() => setTyped((n) => n + chars), delay)
+    return () => clearTimeout(t)
+  }, [lines, typed])
+
   const approve = () => {
     const item = scn.script[step]
     if (item.type === 'tool') setLines((ls) => [...ls, { kind: 'result', exit: item.exit, text: item.text }])
@@ -153,13 +193,18 @@ export default function CliDemo() {
   }
 
   const deny = () => {
-    setLines((ls) => [...ls, { kind: 'denied' }, { kind: 'answer', text: scn.denyAnswer }])
+    setTyped(0)
+    setLines((ls) => [...ls, { kind: 'denied' }, { kind: 'answer', text: scn.denyAnswer, streaming: !reduce }])
     setPending(null)
     setStep(scn.script.length)
-    setDone(true)
+    if (reduce) setDone(true) // 非 reduce 时由打字 effect 完成后落定
   }
 
   const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: '12px', lineHeight: 1.7 }
+
+  // 流式行只显示已吐出的部分，行尾骑一个闪烁光标
+  const shown = (l: Line) => (l.streaming ? (l.text ?? '').slice(0, typed) : (l.text ?? ''))
+  const caret = <span className="hd-caret" style={{ marginLeft: 1 }}>▊</span>
 
   const renderLine = (l: Line, i: number) => {
     if (l.kind === 'prompt') return (
@@ -170,22 +215,38 @@ export default function CliDemo() {
       </div>
     )
     if (l.kind === 'text') return (
-      <div key={i} style={{ ...mono, color: 'var(--text-2)', marginTop: 8 }}>{l.text}</div>
+      <div key={i} style={{ ...mono, color: 'var(--text-2)', marginTop: 8 }}>{shown(l)}{l.streaming && caret}</div>
     )
     if (l.kind === 'tool') return (
+      // 模型「发出」的调用 —— → 方向 + 右侧 agent 标，与下方的返回成对
       <div key={i} style={{ marginTop: 10, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg)', overflow: 'hidden' }}>
-        <div style={{ ...mono, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 11px', borderBottom: '1px solid var(--border)', color: 'var(--text-1)' }}>
-          <span style={{ fontWeight: 600 }}>工具请求</span>
+        <div style={{ ...mono, display: 'flex', alignItems: 'center', gap: 7, padding: '6px 11px', borderBottom: '1px solid var(--border)', color: 'var(--text-1)' }}>
+          <span style={{ color: 'var(--text-2)', fontWeight: 600 }}>→</span>
+          <span style={{ fontWeight: 600 }}>调用工具</span>
           <span style={{ color: 'var(--text-3)' }}>{l.name}</span>
+          <span style={{ marginLeft: 'auto', color: 'var(--text-3)', fontSize: 'var(--text-2xs)' }}>agent 发出</span>
         </div>
         <pre style={{ ...mono, margin: 0, padding: '9px 11px', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{l.input}</pre>
       </div>
     )
-    if (l.kind === 'result') return (
-      <pre key={i} style={{ ...mono, margin: '8px 0 0', padding: '9px 11px', background: 'var(--bg-soft)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>
-        <span style={{ color: l.exit === 0 ? 'var(--text-3)' : 'var(--danger)' }}>exit code: {l.exit}</span>{'\n'}{l.text}
-      </pre>
-    )
+    if (l.kind === 'result') {
+      // 环境「返回」的结果 —— ← 方向 + 状态点 + 右侧 系统 标，灰底以区别于发出
+      const ok = l.exit === 0
+      return (
+        <div key={i} style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-soft)', overflow: 'hidden' }}>
+          <div style={{ ...mono, display: 'flex', alignItems: 'center', gap: 7, padding: '6px 11px', borderBottom: '1px solid var(--border)', color: 'var(--text-1)' }}>
+            <span style={{ color: 'var(--text-2)', fontWeight: 600 }}>←</span>
+            <span style={{ fontWeight: 600 }}>工具结果</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: ok ? 'var(--text-3)' : 'var(--danger)' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: ok ? 'var(--text-2)' : 'var(--danger)', display: 'inline-block' }} />
+              exit {l.exit}
+            </span>
+            <span style={{ marginLeft: 'auto', color: 'var(--text-3)', fontSize: 'var(--text-2xs)' }}>系统返回</span>
+          </div>
+          <pre style={{ ...mono, margin: 0, padding: '9px 11px', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{l.text}</pre>
+        </div>
+      )
+    }
     if (l.kind === 'plan') return (
       <div key={i} style={{ marginTop: 10, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg)', overflow: 'hidden' }}>
         <div style={{ ...mono, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 11px', borderBottom: '1px solid var(--border)', color: 'var(--text-1)' }}>
@@ -209,7 +270,7 @@ export default function CliDemo() {
       <div key={i} style={{ ...mono, color: 'var(--danger)', marginTop: 8 }}>✗ 已拒绝执行</div>
     )
     if (l.kind === 'answer') return (
-      <div key={i} style={{ ...mono, color: 'var(--text-1)', marginTop: 10, padding: '8px 10px', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', whiteSpace: 'pre-wrap' }}>{l.text}</div>
+      <div key={i} style={{ ...mono, color: 'var(--text-1)', marginTop: 10, padding: '8px 10px', background: 'var(--bg-alt)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', whiteSpace: 'pre-wrap' }}>{shown(l)}{l.streaming && caret}</div>
     )
     return null
   }
@@ -245,7 +306,12 @@ export default function CliDemo() {
         .hd-pivot-text b { color: var(--text-1); font-weight: 500; }
         @keyframes hd-pulse { 0%, 100% { border-color: var(--border-strong); } 50% { border-color: var(--text-2); } }
         .hd-pending { animation: hd-pulse 1.5s var(--ease) infinite; }
-        @media (prefers-reduced-motion: reduce) { .hd-pending { animation: none; } }
+        @keyframes hd-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+        .hd-caret { display: inline-block; color: var(--text-2); animation: hd-blink 1s steps(1) infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .hd-pending { animation: none; }
+          .hd-caret { animation: none; opacity: 1; }
+        }
       `}</style>
 
       {/* ── chat（before：熟悉的聊天，做不了事）──────────────────── */}
@@ -291,23 +357,53 @@ export default function CliDemo() {
             </div>
 
             <div ref={scrollRef} style={{ padding: 14, height: 332, overflowY: 'auto' }}>
-              {lines.map(renderLine)}
+              {/* key={mode} → 切换 ReAct/Plan 时旧 transcript 不再硬闪，新的淡入浮起 */}
+              <motion.div
+                key={mode}
+                initial={reduce ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, ease: EASE_OUT }}
+              >
+                {lines.map((l, i) => (
+                  <motion.div
+                    key={i}
+                    initial={reduce ? false : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.26, ease: EASE_OUT }}
+                  >
+                    {renderLine(l, i)}
+                  </motion.div>
+                ))}
 
-              {pending && (
-                <div className="hd-pending" style={{ marginTop: 13, padding: 11, border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)' }}>
-                  <div style={{ ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)', marginBottom: 7 }}>
-                    {pending.type === 'plan' ? '执行前 — 需要你批准这份计划' : '需要批准才能继续'}
+                {/* 活终端：两步之间「思考」、且没有行正在打字时的闪烁光标 */}
+                {!pending && !done && lines.length > 0 && step < scn.script.length && !lines.some((l) => l.streaming) && (
+                  <div style={{ ...mono, marginTop: 8 }}>
+                    <span className="hd-caret">▊</span>
                   </div>
-                  <div style={{ ...mono, color: 'var(--text-1)', marginBottom: 10 }}>
-                    <span style={{ color: 'var(--text-3)' }}>{pending.type === 'plan' ? 'plan ›' : `${pending.name} ›`}</span> {pending.confirmText || pending.input}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                    <span style={{ ...mono, color: 'var(--text-2)' }}>允许吗？(y/N)</span>
-                    <button onClick={approve} style={btnStyle(true)}>y · 允许</button>
-                    <button onClick={deny} style={btnStyle(false)}>N · 拒绝</button>
-                  </div>
-                </div>
-              )}
+                )}
+
+                {pending && (
+                  <motion.div
+                    className="hd-pending"
+                    initial={reduce ? false : { opacity: 0, scale: 0.98, y: 4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    transition={{ duration: 0.24, ease: EASE_OUT }}
+                    style={{ marginTop: 13, padding: 11, border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)' }}
+                  >
+                    <div style={{ ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)', marginBottom: 7 }}>
+                      {pending.type === 'plan' ? '执行前 — 需要你批准这份计划' : '需要批准才能继续'}
+                    </div>
+                    <div style={{ ...mono, color: 'var(--text-1)', marginBottom: 10 }}>
+                      <span style={{ color: 'var(--text-3)' }}>{pending.type === 'plan' ? 'plan ›' : `${pending.name} ›`}</span> {pending.confirmText || pending.input}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <span style={{ ...mono, color: 'var(--text-2)' }}>允许吗？(y/N)</span>
+                      <button onClick={approve} style={btnStyle(true)}>y · 允许</button>
+                      <button onClick={deny} style={btnStyle(false)}>N · 拒绝</button>
+                    </div>
+                  </motion.div>
+                )}
+              </motion.div>
             </div>
           </div>
 
