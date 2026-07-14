@@ -114,6 +114,13 @@ const tocItems = headings.filter((h) => h.depth === 2 || h.depth === 3)
   <Footer />
 </BaseLayout>
 
+<style is:global>
+  /* 阅读页底部固定章节条（≤900px）会盖住页脚——给页脚让出高度 */
+  @media (max-width: 900px) {
+    .site-footer { padding-bottom: calc(20px + 56px + env(safe-area-inset-bottom)); }
+  }
+</style>
+
 <script is:inline>
   // copy bar
   (function () {

@@ -1,11 +1,25 @@
 ---
+import { Code } from 'astro:components'
 import BaseLayout from '../layouts/BaseLayout.astro'
 import SiteHeader from '../components/SiteHeader.astro'
 import Footer from '../components/Footer.astro'
 import CliDemo from '../components/CliDemo'
+import Callout from '../components/Callout'
 import { PARTS, N_TO_SLUG, chapterStatus } from '../data/chapters'
 
 const ladder = PARTS.filter((p) => p.part !== '附录')
+
+// 「看一眼正文」预览里的真实代码片段——与阅读页同一条 Shiki 双主题管线
+const LOOP_TS = `// agent loop 的核心：每一轮都重发整个 messages 数组
+async function runAgent(messages: Message[]) {
+  while (true) {
+    const res = await callModel(messages)
+    messages.push(res.message)
+    if (res.stopReason !== 'tool_use') return res
+    const results = await runTools(res.toolCalls)
+    messages.push(...results)
+  }
+}`
 ---
 
 <BaseLayout>
@@ -21,14 +35,34 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
         <p class="tagline">
           普通 chatbot <strong>回答</strong>你；agent 把同一个模型放进一个循环里——执行、观察、再执行——直到任务<strong>真的完成</strong>。这本书带你用 TypeScript 从零写出那个循环，不靠任何框架。
         </p>
-        <div class="cta-row">
-          <a href="/00-intro" class="btn btn-primary">开始阅读</a>
-          <a href="/outline" class="btn btn-secondary">查看课程大纲</a>
-        </div>
+        <div class="aud" data-mode="human">
+          <div class="aud-toggle" role="tablist" aria-label="选择读者身份">
+            <span class="aud-thumb" aria-hidden="true"></span>
+            <button class="aud-opt active" data-mode="human" role="tab" aria-selected="true" type="button">I'm a Human</button>
+            <button class="aud-opt" data-mode="agent" role="tab" aria-selected="false" type="button">I'm an Agent</button>
+          </div>
 
-        <div class="hero-demo">
-          <CliDemo client:load />
+          <div class="aud-panels">
+            <div class="aud-panel aud-human active">
+              <div class="cta-row">
+                <a href="/00-intro" class="btn btn-primary">开始阅读</a>
+                <a href="/outline" class="btn btn-secondary">查看课程大纲</a>
+              </div>
+            </div>
+            <div class="aud-panel aud-agent">
+              <div class="copy-block">
+                <code class="copy-code multi" id="agent-cmd">安装并运行《Build Your Own AI Agent》的陪读 skill，按本站章节一步步带我学，每章结束前先让我自己动手：
+https://build-your-own-ai-agent.com/skill/tutor.md</code>
+                <button class="copy-btn" id="agent-copy-btn" type="button">复制</button>
+              </div>
+              <p class="aud-note">// 粘贴给 Claude Code、Cursor 等编码 agent，它会按章带你从零写一个 agent</p>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <div class="hero-demo">
+        <CliDemo client:load />
       </div>
     </section>
 
@@ -74,6 +108,33 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
       </div>
     </section>
 
+    <!-- ── 看一眼正文 / 阅读体验预览 ─────────────────────────── -->
+    <section class="peek">
+      <div class="peek-inner">
+        <div class="section-head">
+          <h2>翻开是什么样</h2>
+          <p class="section-sub">
+            阅读体验本身就是这本书的第一个 demo：墨黑标题、灰正文、浅灰代码面、双主题语法高亮、随手展开的 callout。下面是真实排版的一小段。
+          </p>
+        </div>
+
+        <div class="peek-frame">
+          <div class="prose">
+            <h3>agent loop 的形状</h3>
+            <p>
+              普通的一次 API 调用是「一问一答」：你发 <code>messages</code>，拿回一段文本，结束。要让模型真正<strong>做事</strong>，你得把它放进一个循环里，并给它一组工具——执行、观察、再执行，直到它不再请求工具。
+            </p>
+            <Code code={LOOP_TS} lang="ts" themes={{ light: 'github-light', dark: 'github-dark' }} defaultColor={false} />
+            <Callout type="warning" title="一个坑">
+              <code>while (true)</code> 没有上界。真实实现里必须有 <code>maxTurns</code> 兜底——否则模型反复请求工具时会无限循环，把你的 API 账单烧穿。
+            </Callout>
+          </div>
+        </div>
+
+        <p class="peek-note">// 正文逐章写作中，过程公开</p>
+      </div>
+    </section>
+
     <!-- ── differentiation / honesty ────────────────────────── -->
     <section class="diff">
       <div class="diff-inner">
@@ -102,59 +163,75 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
       </div>
     </section>
 
-    <!-- ── agent band ───────────────────────────────────────── -->
-    <section class="agent-band">
-      <div class="agent-band-inner">
-        <p class="badge">// 不想自己读？让你的 agent 教你</p>
-        <h2 class="agent-band-title">把这本书装进你的编码 agent</h2>
-        <p class="agent-band-text">
-          交给 Claude Code、Cursor 这类工具，它会装上本书的<strong>陪读 skill</strong>，按章节顺序带你从零写出这个 agent——导师式、苏格拉底式：讲原理、查作业、不替你写核心代码。你随时可以打断提问、要求跳章或重讲。
-        </p>
-        <div class="cmd-tabs">
-          <button class="cmd-tab active" data-idx="0">粘贴给 agent</button>
-          <button class="cmd-tab" data-idx="1">命令行</button>
-          <button class="cmd-tab" data-idx="2">llms.txt</button>
+    <!-- ── 开始之前 / 门槛 + 成本 + API ─────────────────────── -->
+    <section class="before">
+      <div class="before-inner">
+        <div class="section-head">
+          <h2>开始之前</h2>
+          <p class="section-sub">门槛低、花费小，拿一把 key 就能跑。没有付费墙，你只为自己的 API 调用付费。</p>
         </div>
-        <div class="copy-block">
-          <code class="copy-code" id="cmd-text"></code>
-          <button class="copy-btn" id="cmd-copy-btn">复制</button>
+
+        <dl class="before-list">
+          <div class="before-row">
+            <dt>你需要什么</dt>
+            <dd>会任意一门编程语言就够了。书用 TypeScript，但语言只是表达的载体——你会 Go、Python 也一样跟得下来，需要时让你的 agent 把示例转写成你的语言，机制是相通的。再加 <strong>Node 22+</strong> 和一个 <strong>API key</strong>，就能开工。</dd>
+          </div>
+          <div class="before-row">
+            <dt>这要花多少钱</dt>
+            <dd>全程只为自己的 API 调用付费。spike 周从头跑通核心能力链，<strong>实测约 $1</strong>；跟完全书预计 <strong>不到 $5</strong>。对照付费同类平台 CodeCrafters 的年订阅约 $990——这本书免费、开源、无付费墙。</dd>
+          </div>
+          <div class="before-row">
+            <dt>用哪个模型</dt>
+            <dd>正文用 <strong>Anthropic Messages 格式</strong>：<code>tool_use</code> / <code>tool_result</code> 是消息里显式的 JSON block，「loop 就是重发数组」一一对应，学起来心智负担最低。Anthropic、OpenRouter、DeepSeek 都能直接跑，OpenAI 兼容端点见附录 A。预算敏感推荐 DeepSeek（便宜，且自带 Anthropic 兼容端点）。</dd>
+          </div>
+        </dl>
+
+        <div class="before-links">
+          <a href="/appendix-a-api-providers">附录 A：API 平台与取 key →</a>
+          <a href="/00-intro">从第 0 章开始读 →</a>
         </div>
-        <div class="agent-band-status">// 命令行工具与 llms.txt 将于首批章节发布后上线</div>
       </div>
     </section>
+
   </main>
 
   <Footer />
 
   <script is:inline>
-    var _cmds = [
-      { text: '安装并运行《Build Your Own AI Agent》的陪读 skill，按本站章节一步步带我学，每章结束前先让我自己动手：\nhttps://build-your-own-ai-agent.com/skill/tutor.md', multi: true },
-      { text: 'npx byoaiagent tutor', multi: false },
-      { text: 'https://build-your-own-ai-agent.com/llms.txt', multi: false },
-    ];
-    var _activeIdx = 0;
-    function _setCmd(idx) {
-      _activeIdx = idx;
-      var cmd = _cmds[idx];
-      var el = document.getElementById('cmd-text');
-      el.textContent = cmd.text;
-      cmd.multi ? el.classList.add('multi') : el.classList.remove('multi');
-      document.querySelectorAll('.cmd-tab').forEach(function (t, i) {
-        t.classList.toggle('active', i === idx);
+    // 读者身份切换：Human（开始阅读 / 大纲） ⇄ Agent（粘贴陪读 skill 提示词）
+    (function () {
+      var aud = document.querySelector('.aud');
+      if (!aud) return;
+      var opts = aud.querySelectorAll('.aud-opt');
+      var panels = {
+        human: aud.querySelector('.aud-human'),
+        agent: aud.querySelector('.aud-agent'),
+      };
+      function setMode(mode) {
+        aud.dataset.mode = mode;
+        opts.forEach(function (o) {
+          var on = o.dataset.mode === mode;
+          o.classList.toggle('active', on);
+          o.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        Object.keys(panels).forEach(function (k) {
+          panels[k].classList.toggle('active', k === mode);
+        });
+      }
+      opts.forEach(function (o) {
+        o.addEventListener('click', function () { setMode(o.dataset.mode); });
       });
-    }
-    _setCmd(0);
-    document.querySelectorAll('.cmd-tab').forEach(function (tab, i) {
-      tab.addEventListener('click', function () { _setCmd(i); });
-    });
-    document.getElementById('cmd-copy-btn').addEventListener('click', function () {
-      navigator.clipboard.writeText(_cmds[_activeIdx].text).then(function () {
-        var btn = document.getElementById('cmd-copy-btn');
-        var orig = btn.textContent;
-        btn.textContent = '已复制';
-        setTimeout(function () { btn.textContent = orig; }, 1500);
+
+      var copyBtn = document.getElementById('agent-copy-btn');
+      copyBtn.addEventListener('click', function () {
+        var text = document.getElementById('agent-cmd').textContent;
+        navigator.clipboard.writeText(text).then(function () {
+          var orig = copyBtn.textContent;
+          copyBtn.textContent = '已复制';
+          setTimeout(function () { copyBtn.textContent = orig; }, 1500);
+        });
       });
-    });
+    })();
   </script>
 
   <script is:inline>
@@ -164,10 +241,10 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
 
       // 每处揭示贴合它揭示的东西：标题整块、roadmap 按 2 列左右错峰、diff 逐行
       var groups = [
-        { sel: '.roadmap .section-head, .diff .section-head', stagger: 0, mod: 1 },
+        { sel: '.roadmap .section-head, .diff .section-head, .peek .section-head, .before .section-head', stagger: 0, mod: 1 },
         { sel: '.roadmap .part', stagger: 70, mod: 2 },
-        { sel: '.diff-row', stagger: 50, mod: 4 },
-        { sel: '.agent-band-inner', stagger: 0, mod: 1 },
+        { sel: '.diff-row, .before-row', stagger: 50, mod: 4 },
+        { sel: '.peek-frame', stagger: 0, mod: 1 },
       ];
 
       var io = new IntersectionObserver(function (entries) {
@@ -223,8 +300,115 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
     max-width: 580px;
   }
   .hero .tagline strong { color: var(--text-1); font-weight: 600; }
-  .cta-row { display: flex; gap: 12px; margin-top: 26px; justify-content: center; flex-wrap: wrap; }
-  .hero-demo { margin-top: clamp(36px, 5vw, 52px); text-align: left; }
+  .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .hero-demo {
+    max-width: 1080px;
+    margin: clamp(40px, 5vw, 60px) auto 0;
+    text-align: left;
+  }
+
+  /* ── 读者身份切换（Human ⇄ Agent，folo 式 segmented toggle） ───────────── */
+  .aud { margin-top: 26px; }
+  .aud-toggle {
+    position: relative;
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 3px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+  }
+  .aud-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    height: calc(100% - 6px);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .aud[data-mode='agent'] .aud-thumb { transform: translateX(100%); }
+  .aud-opt {
+    position: relative;
+    z-index: 1;
+    padding: 7px 18px;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-3);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color var(--duration-fast) var(--ease);
+  }
+  .aud-opt:hover { color: var(--text-2); }
+  .aud-opt.active { color: var(--text-1); }
+
+  /* 两面板叠放在同一网格格，容器高度恒为较高者 → 切换不跳动，只做交叉淡入 */
+  .aud-panels { display: grid; margin-top: 20px; }
+  .aud-panel {
+    grid-area: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(6px);
+    transition: opacity 0.3s var(--ease), transform 0.3s var(--ease), visibility 0.3s;
+  }
+  .aud-panel.active { opacity: 1; visibility: visible; transform: none; }
+
+  .aud-note {
+    margin: 12px 0 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    line-height: 1.6;
+    color: var(--text-3);
+  }
+
+  /* 可复制框（原 agent-band 迁移至此 Agent 面板复用） */
+  .copy-block {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    max-width: 540px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .copy-code {
+    flex: 1;
+    padding: 12px 16px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.6;
+    color: var(--text-1);
+    background: transparent;
+    text-align: left;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .copy-btn {
+    flex-shrink: 0;
+    align-self: stretch;
+    padding: 0 16px;
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--text-2);
+    background: transparent;
+    border: 0;
+    border-left: 1px solid var(--border);
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease);
+  }
+  .copy-btn:hover { color: var(--text-1); }
 
   /* hero 载入编排：一次性错峰浮入。
      SSR 安全 —— 默认就可见，动画只在「不要求减弱动效」时叠加；
@@ -234,13 +418,14 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
       from { opacity: 0; transform: translateY(10px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-    .hero-inner > * { animation: hero-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .hero-inner > *,
+    .hero > .hero-demo { animation: hero-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
     .hero-inner > .badge    { animation-delay: 0s; }
     .hero-inner > h1        { animation-delay: 0.07s; }
     .hero-inner > .subtitle { animation-delay: 0.14s; }
     .hero-inner > .tagline  { animation-delay: 0.21s; }
-    .hero-inner > .cta-row  { animation-delay: 0.28s; }
-    .hero-inner > .hero-demo{ animation-delay: 0.36s; }
+    .hero-inner > .aud      { animation-delay: 0.28s; }
+    .hero > .hero-demo      { animation-delay: 0.40s; }
   }
 
   /* ── shared section heads ─────────────────────────────────────────────── */
@@ -380,84 +565,52 @@ const ladder = PARTS.filter((p) => p.part !== '附录')
   .diff-row dt { font-size: var(--text-body); font-weight: 600; color: var(--text-1); letter-spacing: -0.01em; }
   .diff-row dd { margin: 0; font-size: var(--text-sm); line-height: 1.7; color: var(--text-2); }
 
-  /* ── agent band ───────────────────────────────────────────────────────── */
-  .agent-band { padding: clamp(56px, 7vw, 88px) 24px; border-top: 1px solid var(--border); }
-  .agent-band-inner { max-width: 600px; margin: 0 auto; text-align: center; }
-  .agent-band .badge { margin-bottom: 14px; }
-  .agent-band-title {
-    font-size: clamp(22px, 3vw, 28px);
-    letter-spacing: -0.02em;
-    color: var(--text-1);
-    margin: 0;
+  /* ── 看一眼正文 / 阅读体验预览 ─────────────────────────────────────────── */
+  .peek { padding: clamp(56px, 7vw, 88px) 24px; border-top: 1px solid var(--border); }
+  .peek-inner { max-width: 820px; margin: 0 auto; }
+  .peek-frame {
+    margin-top: clamp(28px, 4vw, 40px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg);
+    box-shadow: var(--shadow-sm);
+    padding: clamp(18px, 3vw, 30px) clamp(20px, 3vw, 36px);
   }
-  .agent-band-text { font-size: 15px; line-height: 1.75; color: var(--text-2); margin: 14px 0 26px; }
-  .agent-band-text strong { color: var(--text-1); }
+  /* 预览里的 prose 切片：首元素不要顶 2rem 上边距，紧贴框顶 */
+  .peek-frame .prose > :first-child { margin-top: 0; }
+  .peek-note {
+    margin-top: 16px;
+    font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3);
+  }
 
-  .cmd-tabs { display: flex; gap: 4px; margin-bottom: 8px; justify-content: center; }
-  .cmd-tab {
-    padding: 4px 10px;
-    font-family: var(--font-sans);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--text-3);
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: color var(--duration-fast), border-color var(--duration-fast);
+  /* ── 开始之前 / 门槛 + 成本 + API ─────────────────────────────────────── */
+  .before { padding: clamp(56px, 7vw, 88px) 24px; border-top: 1px solid var(--border); }
+  .before-inner { max-width: 760px; margin: 0 auto; }
+  .before-list { margin: clamp(28px, 4vw, 40px) 0 0; }
+  .before-row {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 8px 32px;
+    padding: 22px 0;
+    border-top: 1px solid var(--border);
   }
-  .cmd-tab:hover { color: var(--text-2); border-color: var(--text-3); }
-  .cmd-tab.active { color: var(--text-1); border-color: var(--text-1); }
-  .copy-block {
-    display: flex;
-    align-items: center;
-    background: var(--bg-alt);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    max-width: 460px;
-    margin: 0 auto;
+  .before-row:last-child { border-bottom: 1px solid var(--border); }
+  @media (max-width: 640px) { .before-row { grid-template-columns: 1fr; gap: 6px; } }
+  .before-row dt { font-size: var(--text-body); font-weight: 600; color: var(--text-1); letter-spacing: -0.01em; }
+  .before-row dd { margin: 0; font-size: var(--text-sm); line-height: 1.75; color: var(--text-2); }
+  .before-row dd strong { color: var(--text-1); font-weight: 600; }
+  .before-row dd code {
+    font-family: var(--font-mono); font-size: 0.875em;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: var(--radius-inline); padding: 1px 5px; color: var(--text-1);
   }
-  .copy-code {
-    flex: 1;
-    padding: 10px 16px;
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    color: var(--text-1);
-    background: transparent;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .before-links { display: flex; flex-wrap: wrap; gap: 14px 28px; margin-top: clamp(28px, 4vw, 36px); }
+  .before-links a {
+    font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-2);
+    text-decoration: none; border-bottom: 1px solid var(--border); padding-bottom: 2px;
+    transition: color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
   }
-  .copy-code.multi {
-    white-space: pre-wrap;
-    overflow: visible;
-    text-overflow: clip;
-    font-size: var(--text-xs);
-    line-height: 1.5;
-  }
-  .copy-btn {
-    flex-shrink: 0;
-    padding: 10px 14px;
-    font-family: var(--font-sans);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--text-2);
-    background: transparent;
-    border: 0;
-    border-left: 1px solid var(--border);
-    cursor: pointer;
-    transition: color var(--duration-fast);
-  }
-  .copy-btn:hover { color: var(--text-1); }
-  .agent-band-status {
-    margin-top: 12px;
-    font-family: var(--font-mono);
-    font-size: var(--text-2xs);
-    color: var(--text-3);
-    text-align: center;
-  }
+  .before-links a:hover { color: var(--text-1); border-color: var(--text-1); }
 
   /* 章节滚动揭示：默认可见；只有 JS（且未要求减弱动效）才会先加 .reveal-init
      把元素压成初始隐藏态，再在进入视口时 .reveal-in 浮起。

@@ -55,7 +55,7 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 
 **已定（已被 2026-06-22 决策推翻）**：~~VitePress + Cloudflare Pages~~（改为 Astro + Starlight，见下）；markdown 为主、交互为孤岛；电子书 M4 生产；**agent 可读分层落地**（2026-06-10 定）：llms.txt / llms-full.txt 生成内置于发布管线，skill 页（SKILL.md + AGENTS.md 引导）随 M4 发布，skill 的导师 prompt 须苏格拉底式（讲原理、查作业、不代写——导师铁律的产品化），ch13 练习加"把本书装进你的 Claude Code"；默认教学模型 Haiku（spike 周实测验证 ch00 的 ~$5 预算承诺）；License = 代码 MIT + 书稿文字 CC BY-NC-SA；逐章照常发布上线，但**主动投放推广统一延后**至 M1 完成后（是否再等 1.0 届时定）；项目/仓库/文件夹统一定名 **build-your-own-ai-agent**，域名 **build-your-own-ai-agent.com**（2026-06-10 定，购自 Cloudflare Registrar 为宜，与 Pages 部署同处管理）。
 
-**待拍板**：ch08 是否拆分、ch11 与 ch13 是否合并（大纲评审中提出，M1 期间定）。
+**决策记录（2026-06-30，大纲结构调整，参照 pi 研究）**：(1) **ch08 拆分**为 ch08（token 感知：计数/截断/缓存）+ ch09（compaction），pi 的 compaction 模块 747 行、三个独立难点，spike D4 也是全书最痛一天，一章装不下；(2) **旧 ch11（todo）+ ch13（skills）合并**为新 ch12「计划、命令与 Skills」，主题统一为"扩展 agent 行为不碰核心 loop"，各自单独撑不满一章；(3) **ch05 尾增「fetch 毕业 + loop 重构」**——趁 fetch→SDK 切换做 functional core / imperative shell 重构（纯函数 loop + config 回调注入），为后续 ch07 权限、ch09 compaction 挂回调铺路，也是 ch11 子 agent 复用 loop 的前提；(4) **旧 ch09 扩为新 ch10**「健壮性与会话生命周期」，增加工具错误三段式（错误编码进结果不抛异常）+ session JSONL 持久化；(5) **ch04 引入 ExecutionEnv 接口**。净效果：拆一合一，总章数仍 16 + 00。新章序：Part 1（01–05 含 fetch 毕业）→ Part 2（06–10）→ Part 3（11–13）→ Part 4（14–16）。里程碑 M2 覆盖 ch06–10（多一章），M3 覆盖 ch11–13（少一章）。
 
 **决策记录（2026-06-21，D6 当日提前定 fetch-vs-SDK，原计划 D7）**：**正文 fetch/SDK 策略 = 双轨到第一部分末、之后 SDK 单轨。** fetch 是 ch01–03 教学脊柱（API 就是 HTTP POST / tool_use 就是一段 JSON / loop 就是重发数组），ch04–05 滑行；第一部分末「fetch 毕业」用 SDK 跑同一 agent 证等价，第二部分起 SDK 单轨（两份 loop 维护税在此了结）；附录 A/B 吃前段 fetch 红利。**流式**：fetch 章不做流式；流式在 fetch 毕业后首个 SDK 版本引入（正文用 SDK helper + 旁注讲背后累加），裸 SSE 手解析作该章「练习与延伸」；保留瘦身版「终端体验打磨」章（spinner/折叠/流式 markdown 渲染，为 demo GIF / 曝光，不再教流式传输）；ch05 不前移 SSE demo、仅留一句前向指引；流式 spike 零接触，写前先半天 mini-spike。详见 SPIKE-NOTES D7。
 
@@ -78,6 +78,7 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 - [x] 域名购买 + 文件夹更名 + GitHub 仓库（public）：github.com/haoofun/build-your-own-ai-agent，LICENSE = MIT + 正文 CC BY-NC-SA（2026-06-11 完成）
 - [ ] M1：第 0–5 章（发布管线已在 spike 周并行搭好）
 - [ ] M2–M5：见 OUTLINE.md 第八节
+- [ ] 网站门面待补（2026-06-28）：① **tutor 陪读 skill**——hero「I'm an Agent」复制的提示词指向 `/skill/tutor.md`，现为占位文件（`public/skill/tutor.md`，防 404），正文写完后随 M4 做实；② **llms.txt**（AI 访问站点的机器可读层）未确认完成。已完成：首页加「看一眼正文」阅读预览 +「开始之前」（门槛 / 成本 / API 格式）区，关于页加 star 区，附录 A 草拟「API 平台与格式」（初稿待作者核定，`appendix-a-api-providers.mdx`）。
 
 ## 分工原则
 

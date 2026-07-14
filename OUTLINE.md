@@ -50,49 +50,55 @@ loop 的终止条件；messages 数组的增长方式；实现 `read_file` 工�
 → 里程碑：能回答"这个项目是干嘛的"的代码问答 agent，且记得住你上一句说了什么。
 
 **04 写与改：Write、Edit 与 diff**
-全量写 vs 精确替换；old_string/new_string 的设计权衡；终端里渲染 diff。
+全量写 vs 精确替换；old_string/new_string 的设计权衡；终端里渲染 diff。引入 `ExecutionEnv` 接口（FileSystem + Shell），工具对着接口编程而非直接 `import fs`——代价仅一个接口 + 一个 Node 实现，但后续收益贯穿全书（ch05 Bash 的 shell 也走接口、ch11 子 agent 天然可测、附录可提远程沙箱）。
 → 里程碑：能修真实 bug 的最小编码 agent。
 
 **05 Bash：让 agent 跑命令**
 子进程、stdout/stderr 捕获、超时与输出截断；agent 跑测试→看报错→改代码→再跑的自我迭代闭环。长输出现在只能"敲完干等整段返回"——这个难受先记一句，留到第二部分（fetch 毕业转 SDK 后）用流式解决，本部分仍一律非流式。
 → 里程碑：丢给它一个失败的测试，它自己修到通过。
 
+**fetch 毕业 · loop 重构**（本部分收尾）
+用 SDK 跑同一个 agent，证等价（API 就是 HTTP POST、tool_use 就是一段 JSON、loop 就是重发数组——到此你全都亲手摸过了）。趁切换之际做一次**关键重构**：把 loop 从"while 循环里什么都干"拆成**纯函数 loop + config 回调注入**（functional core / imperative shell）。动机：第二部分要往 loop 上挂权限（ch07）、compaction（ch09）等策略，如果继续往里塞 if 分支会腐烂得很快；回调注入让 loop 只管机制（调模型、跑工具、发事件），策略全从外部插入。这个重构也是 ch11 子 agent 能一行不改复用 loop 的前提。
+→ 里程碑：SDK 版 agent 行为与 fetch 版完全等价；loop 变成纯函数，接受 config 对象（含 `beforeToolCall`、`transformContext` 等回调槽位，此时全为空实现），第二部分逐个填实。
+
 ### 第二部分 · 从玩具到可用
 
 **06 系统提示词与环境感知**
-system prompt 的分层设计；注入 cwd、git 状态、目录结构；CLAUDE.md 式的项目记忆文件。
+system prompt 的分层设计；注入 cwd、git 状态、目录结构；CLAUDE.md 式的项目记忆文件。权限和 compaction 等策略将在后续章节逐个填入 ch05 重构留下的 config 回调槽位——本章先实现第一个：把环境信息注入 system prompt 的 `buildSystemPrompt` 回调。
 → 里程碑：同一问题前后对比——注入环境前 agent 答不出"当前分支有什么未提交改动"，注入后答对，且遵守 CLAUDE.md 里的项目约定。
 
 **07 权限系统：信任但确认**
-危险操作分级；写操作/命令执行的用户确认交互；白名单与会话内记忆（"本次会话总是允许"）。
+危险操作分级；写操作/命令执行的用户确认交互；白名单与会话内记忆（"本次会话总是允许"）。实现方式：填入 `beforeToolCall` 回调——loop 不含权限逻辑，策略全从外部注入。
 → 里程碑：agent 不再能悄悄 `rm -rf`。
 
-**08 上下文管理：对抗有限的窗口**
-token 计数与预算（count_tokens / usage）；大输出截断策略；历史压缩（compaction）——**手写**客户端压缩：何时压（按窗口比例留头寸，demo 调低阈值）、怎么压（另起一次**不带 tools** 的总结调用）、压掉什么，以及头号坑——压缩边界不能切断 tool_use/tool_result 配对。官方服务端 compaction（`compact-2026-01-12`）可作参照，但**不支持教学模型 Haiku 4.5**，故只能手写（同 Tool Runner 母题）。prompt caching **进正文**：与 compaction 咬合（`cache_control` 断点放 system 末尾，压缩改前缀时 system 缓存不失效），并把 cache 命中纳入账单观测。
-→ 里程碑：长对话不再爆窗口、API 账单下降（compaction 缩历史 + caching 省重发，usage 看得见）。
+**08 token 感知：计数、截断与缓存**
+token 计数与预算（count_tokens / usage 锚定）；大输出截断策略（工具返回 10 万行 stdout 怎么办）；prompt caching（`cache_control` 断点放 system 末尾，把 cache 命中纳入账单观测）。本章只解决"**看见**窗口在哪、还剩多少、账单怎么降"，不压历史——压历史是下一章的事。
+→ 里程碑：API 账单下降（caching 省重发，usage 看得见）；大输出不再把窗口撑爆。
 
-**09 健壮性：真实世界的网络与错误**
-限速与指数退避重试；流中断恢复；Ctrl+C 取消正在执行的工具；工具报错如何回传给模型。
-→ 里程碑：故障注入开关三连演示——模拟 429 自动退避续上；长命令中 Ctrl+C 优雅取消后还能继续对话；工具报错回传、模型自我修正。
+**09 上下文压缩：compaction**
+**手写**客户端压缩，全书最重的一章。何时压（锚定 provider 真实 usage + `reserveTokens` / `keepRecentTokens` 双参数解耦地板与触发线，防 thrash）；怎么压（另起一次**不带 tools** 的总结调用）；切点怎么选（在枚举阶段**结构性排除 toolResult**——根本不把非法位置放进候选集，而不是切完再校验，直接防 tool_use/tool_result 配对断裂导致 400）；结构化保留硬事实（碰过的文件、原始任务等关键信息不交给有损 summary，而是以 `CompactionDetails` 显式留存——直接治"子 agent 把搜索结果摘没"的坑）。官方服务端 compaction（`compact-2026-01-12`）可作参照，但**不支持教学模型 Haiku 4.5**，故只能手写。实现方式：填入 `transformContext` 回调。prompt caching 与 compaction 的咬合（压缩改前缀时 system 缓存不失效）在本章收尾。
+→ 里程碑：长对话不再爆窗口；demo 调低阈值触发压缩，观察压缩前后 usage 变化。
+
+**10 健壮性与会话生命周期**
+三层健壮性：(1) **网络层**——限速与指数退避重试、流中断恢复；(2) **工具层**——错误编码进 tool_result 返回而非抛异常穿透 loop（prepare → execute → finalize 三段式，每段失败都是正常结果流回去，loop 永不被工具异常打断）；(3) **会话层**——session 持久化（append-only JSONL 追加，关掉终端重开、上次对话还在）与 Ctrl+C 优雅取消。
+→ 里程碑：故障注入开关三连演示——模拟 429 自动退避续上；长命令中 Ctrl+C 优雅取消后还能继续对话；工具报错回传、模型自我修正；关掉终端再打开，对话历史完整恢复。
 
 ### 第三部分 · 进阶能力
 
-**10 子 agent：分而治之**
-为什么需要隔离上下文（搜索类任务污染主对话）；Task 工具的实现：子 agent 的生命周期、结果回传。
-→ 里程碑：主 agent 派出子 agent 全库搜索，自己保持清爽。
+**11 子 agent：分而治之**
+为什么需要隔离上下文（搜索类任务污染主对话）；Task 工具的实现：子 agent 的生命周期、结果回传。只读工具集（`createReadOnlyTools`）作为子 agent 权限的结构性解法——"权限最优解有时是限制工具集，不是检查每次调用"。验证 ch05 的 loop 重构收益：子 agent 一行不改复用 `runAgent`。**两层隔离**：消息数组隔离上下文（explorer 只读子 agent），git worktree 隔离文件系统（写操作子 agent）——`git worktree add` 出临时目录、子 agent 的 cwd 指过去、结束后 diff 审查再 merge 或丢弃，核心实现 ~30 行，但把 agent 隔离从"不污染对话"升级到"不碰用户工作区"。
+→ 里程碑 A：主 agent 派出只读子 agent 全库搜索，自己保持清爽。
+→ 里程碑 B（练习与延伸）：派子 agent 去 worktree 里重构一个模块，审查 diff 后 merge 回来。
 
-**11 计划与待办：让 agent 有条理**
-TodoWrite 式工具：为什么"让模型自己列任务清单"能显著提升长任务表现；plan 模式的实现。
-→ 里程碑：同一个多步任务（重命名函数 + 更新所有引用 + 跑测试）开/关 todo 各跑一次，开 todo 不漏步骤。
+**12 计划、命令与 Skills**
+三件事共享一个主题——**扩展 agent 的行为，不碰核心 loop**。(1) TodoWrite 式工具：为什么"让模型自己列任务清单"能显著提升长任务表现；(2) 斜杠命令：`/help`、`/compact` 等元操作；(3) skill 文件的按需加载——本质是"把 prompt 工程产品化"。
+→ 里程碑 A：同一个多步任务（重命名函数 + 更新所有引用 + 跑测试）开/关 todo 各跑一次，开 todo 不漏步骤。
+→ 里程碑 B：实现一个 `/commit` skill；用 token 计数证明不触发时它不在 prompt 里——按需加载眼见为实。
+→ 练习与延伸：把本书的导师 skill 装进你的 Claude Code（指向 skill 页）——书教 skills，书本身就是 skill。
 
-**12 MCP：接入外部世界**
+**13 MCP：接入外部世界**
 MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，接入一个现成 server（如文件系统/GitHub）。
 → 里程碑：你的 agent 能用上整个 MCP 生态。
-
-**13 自定义命令与 Skills**
-斜杠命令；skill 文件的按需加载——本质是"把 prompt 工程产品化"。
-→ 里程碑：实现一个 `/commit` skill；用 token 计数证明不触发时它不在 prompt 里——按需加载眼见为实。
-→ 练习与延伸：把本书的导师 skill 装进你的 Claude Code（指向 skill 页）——书教 skills，书本身就是 skill。
 
 ### 第四部分 · 收尾
 
@@ -134,7 +140,7 @@ src/content/docs/*.mdx ──→ Astro + Starlight ──→ 网站（交互孤�
 
 约定：markdown 为主，交互动画为孤岛（MDX + React 组件 + 静态降级内容，全书控制在关键处）；网站部署 Cloudflare Pages；电子书延后生产，写作期 `.md` 文件保持 pandoc 兼容，`.mdx` 文件后续统一补预处理。
 
-**agent 可读（第四端）**：站点内置生成 llms.txt / llms-full.txt，读者可直接把链接丢给自己的 AI agent；M4 随 1.0 上线 **skill 页**——提供 SKILL.md（Claude Code）与 AGENTS.md 引导（Codex 等），让读者用自己的 agent 当导师学完本书。导师 prompt 苏格拉底式：讲原理、查作业、不代写（导师铁律的产品化，呼应 ch13「书教 skills，书即 skill」）。
+**agent 可读（第四端）**：站点内置生成 llms.txt / llms-full.txt，读者可直接把链接丢给自己的 AI agent；M4 随 1.0 上线 **skill 页**——提供 SKILL.md（Claude Code）与 AGENTS.md 引导（Codex 等），让读者用自己的 agent 当导师学完本书。导师 prompt 苏格拉底式：讲原理、查作业、不代写（导师铁律的产品化，呼应 ch12「书教 skills，书即 skill」）。
 
 ## 七、指标（双层）
 
@@ -147,8 +153,8 @@ src/content/docs/*.mdx ──→ Astro + Starlight ──→ 网站（交互孤�
 | 阶段 | 内容 | 备注 |
 |---|---|---|
 | M0 | spike 周（2026-06-10 起，一周） | 作者粗跑核心能力链，AI 并行搭发布管线；产出坑清单，代码留 `spike` 分支（见 CLAUDE.md"协作工作流"） |
-| M1 | 第 0–5 章 | 进入逐章循环；管线已就绪，写完即发，最小可发布单元试水 |
-| M2 | 第 6–9 章 | 此时已超过 CodeCrafters 深度 |
-| M3 | 第 10–13 章 | 差异化核心；若 spike 周未跑通 MCP，进 M3 前补 spike |
+| M1 | 第 0–5 章（含 fetch 毕业 + loop 重构） | 进入逐章循环；管线已就绪，写完即发，最小可发布单元试水 |
+| M2 | 第 6–10 章 | 此时已超过 CodeCrafters 深度（ch08–09 拆分后多一章，ch10 含 session 持久化） |
+| M3 | 第 11–13 章 | 差异化核心（ch12 合并 todo+skills）；若 spike 周未跑通 MCP，进 M3 前补 spike |
 | M4 | 第 14–16 章 + 全书校对 | 发布 1.0；电子书实际生产；上线 skill 页（SKILL.md / AGENTS.md，苏格拉底式导师 prompt） |
 | M5 | 英文翻译版 | 提 build-your-own-x PR |

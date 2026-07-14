@@ -65,6 +65,18 @@ const siblings = [
         ))}
       </div>
 
+      <h2 class="about-h2">给个 star</h2>
+      <div class="star-block">
+        <p class="star-lead">
+          如果这本书帮到了你——让你真正看懂 agent 是怎么跑起来的，或者少踩了几个坑——就在 GitHub 点个
+          <strong>star</strong> 吧。它免费、开源、没有付费墙；star 是它能被更多人看到、也是我把它逐章写完的动力。
+        </p>
+        <a href="https://github.com/haoofun/build-your-own-ai-agent" target="_blank" rel="noopener" class="star-btn">
+          <i data-lucide="star"></i>
+          在 GitHub 点个 star
+        </a>
+      </div>
+
       <h2 class="about-h2">许可</h2>
       <div class="license-rows">
         <div class="license-row">
@@ -207,4 +219,22 @@ const siblings = [
     padding-top: 20px; border-top: 1px solid var(--border);
     font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3);
   }
+
+  /* ── star 区 ───────────────────────────────────────────────── */
+  .star-block { margin-bottom: 52px; }
+  .star-lead {
+    font-size: var(--text-body); line-height: 1.75;
+    color: var(--text-2); margin: 0 0 20px;
+  }
+  .star-lead strong { color: var(--text-1); font-weight: 600; }
+  .star-btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 10px 18px; border-radius: var(--radius-sm);
+    background: var(--text-1); color: var(--bg);
+    font-size: var(--text-sm); font-weight: 600;
+    text-decoration: none; border: 1px solid var(--text-1);
+    transition: opacity var(--duration-fast) var(--ease);
+  }
+  .star-btn:hover { opacity: 0.88; }
+  .star-btn :global(svg) { width: 16px; height: 16px; }
 </style>

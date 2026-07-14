@@ -1,29 +1,54 @@
 ---
-title: '附录 A · API 提供商选择'
+title: '附录 A · API 提供商与格式'
+description: '本书用 Anthropic Messages 格式；OpenAI 兼容端点、OpenRouter、DeepSeek 的取 key 与切换方式'
 ---
 
 import Callout from '../../components/Callout'
 
-<Callout type="info" title="正文撰写中">
-本章正在写作中（全书处于写作前期 spike 周）。下面是本章的固定结构，正文将逐节补全。
+<Callout type="warning" title="初稿 · 待作者核定">
+本页为协作初稿。链接与价格以各平台官网为准；正文表述、以及「为什么选 Anthropic 格式」的措辞待作者最终核定后定稿。
 </Callout>
 
 ## 为什么需要它
 
-`// 待撰写`
+你需要一个能调的模型 API，以及一把 key。本书正文统一用 **Anthropic Messages 格式**——但你不必非用 Anthropic 官方：好几个平台都兼容这套格式，价格、额度各不相同。这一节讲清四件事：两种格式差在哪、为什么本书选 Anthropic、四个平台怎么取 key、预算紧时选谁。
 
-## 原理拆解
+## 原理拆解：两种格式
 
-`// 待撰写`
+市面上的 LLM API 大致是两种「形状」：
 
-## 动手实现
+- **Anthropic Messages 格式**：一段对话是一个 `messages` 数组，每条消息的 `content` 是一串**有类型的 block**——`text`、`tool_use`、`tool_result`。模型要调工具，就在 assistant 消息里放一个 `tool_use` block（`input` 是一个**真正的 JSON 对象**）；你执行完，把一个 `tool_result` block 放进下一条 user 消息。loop 就是「把这个数组重发一遍」。
+- **OpenAI Chat Completions 格式**：工具调用挂在 assistant 消息的 `tool_calls` 字段上，函数参数是**被 JSON 字符串化的字符串**（用前要先 `JSON.parse`）；工具结果要另起一条 `role: "tool"` 的消息，靠 `tool_call_id` 和调用对应。
 
-`// 待撰写`
+两者能力等价，差别在**间接层数**。
+
+### 为什么本书选 Anthropic 格式
+
+纯粹是**教学心智负担**的考量，不是优劣之争：
+
+- `tool_use` / `tool_result` 是 content 里**显式的 block**，「agent loop = 重发整个 messages 数组」这句话能一字不差地对应到代码，不必先理解「assistant 消息 + 另一条 tool 消息 + id 关联」三件套。
+- 工具输入是结构化的 JSON 对象，而不是「字符串里再套一层 JSON」，少一次 parse、少一层「藏在字符串里的协议」。
+- 后面的错误处理、流式、子 agent 都建立在这套 block 模型上，概念自始至终一致。
+
+<Callout type="info" title="用 OpenAI 生态也能学">
+本书的 loop、工具、权限在两种格式下结构完全一样，差别只在序列化。如果你日常用 OpenAI，照常学就行——附录 B 给一个薄薄的 model adapter，把同一套 agent 跑在 OpenAI 兼容端点上。
+</Callout>
+
+## 动手实现：取一把 key
+
+> 链接随官网调整，以官网为准；下面给的是各平台的控制台 / 文档入口。
+
+- **Anthropic（原生 Anthropic 格式）** — 控制台取 key：`console.anthropic.com`；文档：`docs.anthropic.com`。最贴近本书正文，无需任何适配。
+- **OpenRouter（聚合，支持 Anthropic 格式）** — 取 key：`openrouter.ai/keys`；文档：`openrouter.ai/docs`。一把 key 调多家模型，适合比价与回退。
+- **DeepSeek（便宜，双格式兼容）** — 取 key：`platform.deepseek.com`；文档：`api-docs.deepseek.com`。默认是 OpenAI 兼容端点，另有专门的 **Anthropic 兼容端点** `https://api.deepseek.com/anthropic`，可直接吃本书正文。预算敏感首选。
+- **OpenAI（OpenAI 格式，配合附录 B）** — 取 key：`platform.openai.com/api-keys`；文档：`platform.openai.com/docs`。用 Chat Completions 格式，搭配附录 B 的 adapter。
 
 ## 跑起来看效果
 
-`// 待撰写`
+把 key 写进环境变量（例如 `ANTHROPIC_API_KEY`），第 1 章的第一个请求就能直接发出去。换平台时通常只改两处：base URL 和 key——比如改用 DeepSeek 的 Anthropic 端点，把 base URL 指到 `https://api.deepseek.com/anthropic` 即可，agent 代码一行不动。
 
 ## 练习与延伸
 
-`// 待撰写`
+- 同一段「列目录 + 读文件」的请求，分别用 Anthropic 官方端点和 DeepSeek 的 Anthropic 端点各跑一遍，对比返回结构是否一致。
+- 读一遍 OpenAI 的 `tool_calls` 文档，把「assistant.tool_calls + role:tool 消息」画成时序图，和 Anthropic 的 block 模型对照——你会更清楚「间接层数」指的是什么。
+- 估算预算：按全书约 &lt; $5 的总量，挑一个平台，算算这点钱够你跑多少轮。

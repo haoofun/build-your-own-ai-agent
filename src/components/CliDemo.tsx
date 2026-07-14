@@ -5,13 +5,17 @@ import { motion, useReducedMotion } from 'motion/react'
 const EASE_OUT = [0.22, 1, 0.36, 1] as const
 
 /* ──────────────────────────────────────────────────────────────────────────
- * 首页 hero 的活 demo —— 一条轴上的三层自洽度：
- *   chat（只会答） → ReAct agent（边想边做的循环） → Plan agent（先写计划再执行）
- * 左列是固定的 chat 对照，右列是会真的循环到「✓ 完成」的 agent。
- * 权限只是循环里的一个节点：每种模式都恰好有一个「等你批准」的检查点，
- *   但位置不同 —— ReAct 在动手写之前停一下，Plan 在执行前先让你批准整份计划。
+ * 首页 hero 的活 demo —— 同一个问题，两种世界（左文右器，按钮切换）：
+ *   左列：固定的框架文案 + Chat ⇄ Agent 分段开关 + 随选项变化的讲解。
+ *   右列：一台会变形的「设备」——
+ *     · Chat  → 一台仿真的聊天 app（气泡 + 输入框 + 明确的「死胡同」）：
+ *               读得懂问题、给得出建议，却改不动文件、跑不了测试，对话到此为止。
+ *     · Agent → 一台仿真的 CLI（浅灰面、非深色终端）：同一个模型多包一层循环，
+ *               真的去跑测试、读源码、改那一行、再跑一遍，直到 ✓ 完成。
+ * 权限只是循环里的一个节点：ReAct 在动手写之前停一下，Plan 在执行前先批整份计划。
  * ────────────────────────────────────────────────────────────────────────── */
 
+type View = 'chat' | 'agent'
 type Mode = 'react' | 'plan'
 
 interface Step {
@@ -32,9 +36,22 @@ interface Scenario {
   script: Step[]
 }
 
+// 两侧问的是同一句话 —— chat 与 agent 的分水岭就在这句之后
+const SHARED_PROMPT = '修复 cart 的 bug，跑 npm test 直到全绿'
+
+// chat 侧：读得懂、答得出，却动不了手
+const CHAT_REPLY =
+  '看报错，applyDiscount 多半把 rate 用反了——total * rate 实际应该是 total * (1 - rate)。\n你把那一行改掉，再跑一次 npm test，应该就绿了。'
+const CHAT_DEADEND = '到此为止 —— 它给得出建议，却改不动文件、也跑不了那次测试。活还得你自己干。'
+
+const CHAT_COPY =
+  'chat 读得懂问题，甚至猜得到 bug 就在 applyDiscount。但它改不动那一行、跑不了那次测试——建议给到，活还得你自己干。这是今天多数人用的 AI。'
+const AGENT_COPY =
+  'agent 是同一个模型，外面多包一层循环：它真的去跑测试、读源码、改那一行、再跑一遍。看到红，就再来一轮，直到全绿。这本书，就教你从零写出这层循环。'
+
 const SCENARIOS: Record<Mode, Scenario> = {
   react: {
-    prompt: "'修复 cart 的 bug，跑 npm test 直到全绿'",
+    prompt: `'${SHARED_PROMPT}'`,
     denyAnswer:
       '已取消。改文件是写操作——没有你的批准，我不会动 src/cart.js。\n想先确认会怎么改？我可以只打印 diff 给你看。',
     script: [
@@ -114,9 +131,11 @@ interface Line extends Step {
 
 export default function CliDemo() {
   const reduce = useReducedMotion()
+  const [view, setView] = useState<View>('chat')
   const [mode, setMode] = useState<Mode>('react')
   const scn = SCENARIOS[mode]
 
+  // ── agent 引擎状态 ───────────────────────────────────────────────
   const [lines, setLines] = useState<Line[]>([])
   const [step, setStep] = useState(0)
   const [pending, setPending] = useState<Step | null>(null)
@@ -124,6 +143,10 @@ export default function CliDemo() {
   const [done, setDone] = useState(false)
   const [typed, setTyped] = useState(0) // 当前流式行已显示的字数
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // ── chat 仿真状态 ────────────────────────────────────────────────
+  const [chatPhase, setChatPhase] = useState<'thinking' | 'typing'>('thinking')
+  const [chatTyped, setChatTyped] = useState(0)
 
   const reset = (m: Mode) => {
     setLines([{ kind: 'prompt', text: SCENARIOS[m].prompt }])
@@ -134,14 +157,35 @@ export default function CliDemo() {
     setTyped(0)
   }
 
-  useEffect(() => { reset(mode) }, [mode])
+  // 进入 agent（或切换 ReAct/Plan）→ 从头跑这段 transcript
+  useEffect(() => { if (view === 'agent') reset(mode) }, [mode, view])
+
+  // 进入 chat → 先「思考」一下，再逐字吐出回复（reduced-motion 直接落定）
+  useEffect(() => {
+    if (view !== 'chat') return
+    setChatTyped(0)
+    if (reduce) { setChatPhase('typing'); setChatTyped(CHAT_REPLY.length); return }
+    setChatPhase('thinking')
+    const t = setTimeout(() => setChatPhase('typing'), 620)
+    return () => clearTimeout(t)
+  }, [view, reduce])
+
+  useEffect(() => {
+    if (view !== 'chat' || chatPhase !== 'typing' || reduce) return
+    if (chatTyped >= CHAT_REPLY.length) return
+    const { chars, delay } = streamTick()
+    const t = setTimeout(() => setChatTyped((n) => Math.min(n + chars, CHAT_REPLY.length)), delay)
+    return () => clearTimeout(t)
+  }, [view, chatPhase, chatTyped, reduce])
+  const chatDone = chatPhase === 'typing' && chatTyped >= CHAT_REPLY.length
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [lines, pending, planDone, typed])
 
+  // agent 驱动器：逐步推进脚本
   useEffect(() => {
-    if (pending || done || step >= scn.script.length) return
+    if (view !== 'agent' || pending || done || step >= scn.script.length) return
     const item = scn.script[step]
     const delay = step === 0 ? 300 : STEP_MS
     const t = setTimeout(() => {
@@ -167,10 +211,11 @@ export default function CliDemo() {
       }
     }, delay)
     return () => clearTimeout(t)
-  }, [step, pending, done, mode])
+  }, [step, pending, done, mode, view])
 
   // 流式打字：找到当前 streaming 行，逐块吐字，吐完落定并推进
   useEffect(() => {
+    if (view !== 'agent') return
     const idx = lines.findIndex((l) => l.streaming)
     if (idx === -1) return
     const full = lines[idx].text ?? ''
@@ -183,7 +228,7 @@ export default function CliDemo() {
     const { chars, delay } = streamTick()
     const t = setTimeout(() => setTyped((n) => n + chars), delay)
     return () => clearTimeout(t)
-  }, [lines, typed])
+  }, [lines, typed, view])
 
   const approve = () => {
     const item = scn.script[step]
@@ -275,15 +320,14 @@ export default function CliDemo() {
     return null
   }
 
-  const modeBtn = (m: Mode, label: string, sub: string): React.CSSProperties => {
+  const modeBtn = (m: Mode): React.CSSProperties => {
     const active = m === mode
     return {
       fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xs)', cursor: 'pointer',
-      padding: '5px 11px', borderRadius: 'var(--radius-full)', whiteSpace: 'nowrap',
+      padding: '3px 9px', borderRadius: 'var(--radius-full)', whiteSpace: 'nowrap',
       border: `1px solid ${active ? 'var(--text-1)' : 'var(--border)'}`,
       background: active ? 'var(--text-1)' : 'transparent',
-      color: active ? 'var(--bg)' : 'var(--text-2)',
-      display: 'inline-flex', alignItems: 'center', gap: 5,
+      color: active ? 'var(--bg)' : 'var(--text-3)',
       transition: 'all 0.18s var(--ease)',
     }
   }
@@ -299,124 +343,315 @@ export default function CliDemo() {
   return (
     <div className="hd-root">
       <style>{`
-        .hd-root { max-width: 720px; margin: 0 auto; }
-        .hd-pivot { display: flex; align-items: center; gap: 12px; margin: 18px 2px; }
-        .hd-pivot-rule { flex: 1; height: 1px; background: var(--border); }
-        .hd-pivot-text { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3); white-space: nowrap; }
-        .hd-pivot-text b { color: var(--text-1); font-weight: 500; }
+        .hd-root { width: 100%; }
+        .hd-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+          gap: clamp(28px, 4vw, 60px);
+          align-items: center;
+        }
+        @media (max-width: 880px) {
+          .hd-grid { grid-template-columns: 1fr; gap: 22px; align-items: stretch; }
+        }
+
+        /* ── 左列：框架文案 + 切换 ─────────────────────────────── */
+        .hd-left { max-width: 38ch; }
+        @media (max-width: 880px) { .hd-left { max-width: none; } }
+        .hd-eyebrow { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3); }
+        .hd-lead {
+          margin: 12px 0 18px;
+          font-size: clamp(16px, 1.4vw, 19px);
+          line-height: 1.55;
+          font-weight: 500;
+          letter-spacing: -0.01em;
+          color: var(--text-1);
+        }
+        .hd-lead b { font-weight: 600; }
+        .hd-body { margin: 18px 0 0; font-size: var(--text-sm); line-height: 1.8; color: var(--text-2); min-height: 5.4em; }
+
+        /* segmented toggle —— 与 hero 的读者身份开关同语汇 */
+        .hd-seg {
+          position: relative; display: inline-grid; grid-template-columns: 1fr 1fr;
+          padding: 3px; background: var(--bg-alt);
+          border: 1px solid var(--border); border-radius: var(--radius-full);
+        }
+        .hd-seg-thumb {
+          position: absolute; top: 3px; left: 3px;
+          width: calc(50% - 3px); height: calc(100% - 6px);
+          background: var(--bg); border: 1px solid var(--border);
+          border-radius: var(--radius-full); box-shadow: var(--shadow-sm);
+          transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .hd-seg[data-view='agent'] .hd-seg-thumb { transform: translateX(100%); }
+        .hd-seg-opt {
+          position: relative; z-index: 1;
+          display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+          padding: 7px 18px; font-family: var(--font-sans); font-size: var(--text-sm);
+          font-weight: 500; color: var(--text-3); background: transparent;
+          border: 0; border-radius: var(--radius-full); cursor: pointer; white-space: nowrap;
+          transition: color var(--duration-fast) var(--ease);
+        }
+        .hd-seg-opt:hover { color: var(--text-2); }
+        .hd-seg-opt.active { color: var(--text-1); }
+        .hd-seg-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.55; }
+
+        /* ── 右列：会变形的设备 ────────────────────────────────── */
+        .hd-right { min-width: 0; }
+        .hd-window {
+          height: 412px; display: flex; flex-direction: column; overflow: hidden;
+          border: 1px solid var(--border); border-radius: var(--radius-lg);
+          background: var(--bg); box-shadow: var(--shadow-sm);
+        }
+        .hd-winbar {
+          flex: none; display: flex; align-items: center; gap: 8px;
+          padding: 8px 13px; border-bottom: 1px solid var(--border); background: var(--bg-alt);
+        }
+        .hd-dots { display: flex; gap: 6px; }
+        .hd-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border-strong); display: block; }
+        .hd-winname { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3); }
+        .hd-modes { display: flex; gap: 6px; }
+
+        /* 设备上方的「运行模式」选择条 —— 两视图共存以保持等高（终端标题栏回归纯净） */
+        .hd-strip { display: flex; align-items: center; gap: 10px; min-height: 28px; margin-bottom: 11px; }
+        .hd-strip-label { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3); }
+
+        .hd-body-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
+
+        /* chat 设备：sans 气泡 + 输入条 + 死胡同 —— 大众熟悉的聊天 app */
+        .hd-chat-id { display: flex; align-items: center; gap: 8px; }
+        .hd-chat-av { width: 18px; height: 18px; border-radius: 50%; background: var(--text-1); flex: none; }
+        .hd-chat-name { font-family: var(--font-sans); font-size: var(--text-xs); font-weight: 600; color: var(--text-1); }
+        .hd-chatbody { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 15px; font-family: var(--font-sans); }
+        .hd-bubble-user {
+          margin-left: auto; width: fit-content; max-width: 80%;
+          font-size: 13.5px; line-height: 1.5; color: var(--bg);
+          background: var(--text-1); border-radius: 13px 13px 3px 13px; padding: 8px 12px;
+        }
+        .hd-asst { display: flex; gap: 9px; margin-top: 16px; }
+        .hd-asst-av { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-soft); }
+        .hd-asst-msg { font-size: 13.5px; line-height: 1.65; color: var(--text-2); white-space: pre-wrap; max-width: 85%; }
+        .hd-asst-msg .hd-mono { font-family: var(--font-mono); font-size: 0.92em; color: var(--text-1); }
+        .hd-think { display: inline-flex; gap: 4px; padding-top: 5px; }
+        .hd-think span { width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); animation: hd-think 1.2s var(--ease) infinite; }
+        .hd-think span:nth-child(2) { animation-delay: 0.18s; }
+        .hd-think span:nth-child(3) { animation-delay: 0.36s; }
+        @keyframes hd-think { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+        .hd-deadend {
+          display: flex; gap: 9px; margin-top: 16px; padding: 10px 12px;
+          border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-alt);
+          font-family: var(--font-sans); font-size: var(--text-xs); line-height: 1.6; color: var(--text-2);
+        }
+        .hd-deadend .x { color: var(--danger); font-weight: 600; flex: none; }
+        .hd-chatinput {
+          flex: none; display: flex; align-items: center; gap: 9px;
+          padding: 10px 12px; border-top: 1px solid var(--border); background: var(--bg);
+        }
+        .hd-chatinput .field {
+          flex: 1; padding: 9px 13px; border: 1px solid var(--border); border-radius: var(--radius-full);
+          font-family: var(--font-sans); font-size: var(--text-xs); color: var(--text-3); background: var(--bg-alt);
+        }
+        .hd-chatinput .send {
+          flex: none; width: 30px; height: 30px; border-radius: 50%;
+          border: 1px solid var(--border); background: var(--bg-alt); color: var(--text-3);
+          display: flex; align-items: center; justify-content: center; font-size: 14px;
+        }
+
+        /* 设备脚注：左 chat 一句话，右 agent loop + 重跑 */
+        .hd-devfoot {
+          display: flex; align-items: center; gap: 10px; min-height: 26px;
+          margin-top: 11px; flex-wrap: wrap;
+          font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--text-3);
+        }
+        .hd-devfoot .loop b { color: var(--text-1); font-weight: 500; }
+        .hd-devfoot .loop span { color: var(--text-2); }
+        .hd-replay {
+          margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+          font-family: var(--font-mono); font-size: var(--text-2xs); cursor: pointer;
+          padding: 4px 11px; border-radius: var(--radius-sm);
+          border: 1px solid var(--border); background: transparent; color: var(--text-2);
+          transition: border-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+        }
+        .hd-replay:hover { border-color: var(--text-1); color: var(--text-1); }
+
         @keyframes hd-pulse { 0%, 100% { border-color: var(--border-strong); } 50% { border-color: var(--text-2); } }
         .hd-pending { animation: hd-pulse 1.5s var(--ease) infinite; }
         @keyframes hd-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
         .hd-caret { display: inline-block; color: var(--text-2); animation: hd-blink 1s steps(1) infinite; }
         @media (prefers-reduced-motion: reduce) {
-          .hd-pending { animation: none; }
+          .hd-pending, .hd-think span { animation: none; }
           .hd-caret { animation: none; opacity: 1; }
+          .hd-seg-thumb { transition: none; }
         }
       `}</style>
 
-      {/* ── chat（before：熟悉的聊天，做不了事）──────────────────── */}
-      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)', padding: '13px 15px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 11 }}>
-          <span style={{ ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)' }}>chat · 一问一答</span>
-          <span style={{ ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)' }}>多数工具止步于此</span>
-        </div>
-        <div style={{ marginLeft: 'auto', width: 'fit-content', maxWidth: '78%', fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--text-1)', background: 'var(--bg-soft)', borderRadius: '10px 10px 2px 10px', padding: '7px 11px' }}>
-          修复 cart 的 bug
-        </div>
-        <div style={{ maxWidth: '86%', fontFamily: 'var(--font-sans)', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-2)', marginTop: 9 }}>
-          大概是 applyDiscount 把 rate 用反了，你可以试着改成 <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-1)' }}>1 - rate</span>……
-        </div>
-        <div style={{ marginTop: 11, paddingTop: 10, borderTop: '1px solid var(--border)', ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)', lineHeight: 1.6 }}>
-          <span style={{ color: 'var(--danger)' }}>✕</span> 它只会说，不会动手——跑不了测试，给不了你绿色。对话到此结束。
-        </div>
-      </div>
-
-      {/* ── pivot：同一个模型，多了一个循环 ──────────────────────── */}
-      <div className="hd-pivot">
-        <span className="hd-pivot-rule" />
-        <span className="hd-pivot-text">↓ 换成 <b>agent</b>：同一个模型，多了一个<b>循环</b> ↓</span>
-        <span className="hd-pivot-rule" />
-      </div>
-
-      {/* ── agent（after：会循环到完成）──────────────────────────── */}
-      <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9, flexWrap: 'wrap' }}>
-            <span style={{ ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)', marginRight: 1 }}>agent ›</span>
-            <button onClick={() => setMode('react')} style={modeBtn('react', '', '')}>ReAct · 边想边做</button>
-            <button onClick={() => setMode('plan')} style={modeBtn('plan', '', '')}>Plan · 先计划后执行</button>
+      <div className="hd-grid">
+        {/* ── 左列：同一个问题，两种回应 ───────────────────────── */}
+        <div className="hd-left">
+          <div className="hd-eyebrow">// 同一个问题，两种回应</div>
+          <p className="hd-lead">
+            把「<b>{SHARED_PROMPT}</b>」这一句，<br />分别交给 chat 和 agent——
+          </p>
+          <div className="hd-seg" data-view={view} role="tablist" aria-label="对比 chat 与 agent">
+            <span className="hd-seg-thumb" aria-hidden="true" />
+            <button
+              className={`hd-seg-opt ${view === 'chat' ? 'active' : ''}`}
+              role="tab" aria-selected={view === 'chat'} type="button"
+              onClick={() => setView('chat')}
+            >
+              <span className="hd-seg-dot" aria-hidden="true" />Chat
+            </button>
+            <button
+              className={`hd-seg-opt ${view === 'agent' ? 'active' : ''}`}
+              role="tab" aria-selected={view === 'agent'} type="button"
+              onClick={() => setView('agent')}
+            >
+              <span className="hd-seg-dot" aria-hidden="true" />Agent
+            </button>
           </div>
+          <p className="hd-body">{view === 'chat' ? CHAT_COPY : AGENT_COPY}</p>
+        </div>
 
-          <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 13px', borderBottom: '1px solid var(--border)', background: 'var(--bg-alt)' }}>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {[0, 1, 2].map((i) => <span key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--border-strong)', display: 'block' }} />)}
-              </div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xs)', color: 'var(--text-3)', marginLeft: 6 }}>
-                npx tsx cli.ts — your-own-agent
-              </span>
-            </div>
-
-            <div ref={scrollRef} style={{ padding: 14, height: 332, overflowY: 'auto' }}>
-              {/* key={mode} → 切换 ReAct/Plan 时旧 transcript 不再硬闪，新的淡入浮起 */}
-              <motion.div
-                key={mode}
-                initial={reduce ? false : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, ease: EASE_OUT }}
-              >
-                {lines.map((l, i) => (
-                  <motion.div
-                    key={i}
-                    initial={reduce ? false : { opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.26, ease: EASE_OUT }}
-                  >
-                    {renderLine(l, i)}
-                  </motion.div>
-                ))}
-
-                {/* 活终端：两步之间「思考」、且没有行正在打字时的闪烁光标 */}
-                {!pending && !done && lines.length > 0 && step < scn.script.length && !lines.some((l) => l.streaming) && (
-                  <div style={{ ...mono, marginTop: 8 }}>
-                    <span className="hd-caret">▊</span>
+        {/* ── 右列：会变形的设备 ───────────────────────────────── */}
+        <div className="hd-right">
+          <motion.div
+            key={view}
+            initial={reduce ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: EASE_OUT }}
+          >
+            {/* 运行模式条：agent 的 ReAct/Plan 从终端标题栏挪到这里；chat 只标身份 */}
+            <div className="hd-strip">
+              {view === 'agent' ? (
+                <>
+                  <span className="hd-strip-label">agent ›</span>
+                  <div className="hd-modes" role="tablist" aria-label="agent 模式">
+                    <button onClick={() => setMode('react')} style={modeBtn('react')} role="tab" aria-selected={mode === 'react'} type="button">ReAct</button>
+                    <button onClick={() => setMode('plan')} style={modeBtn('plan')} role="tab" aria-selected={mode === 'plan'} type="button">Plan</button>
                   </div>
-                )}
-
-                {pending && (
-                  <motion.div
-                    className="hd-pending"
-                    initial={reduce ? false : { opacity: 0, scale: 0.98, y: 4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ duration: 0.24, ease: EASE_OUT }}
-                    style={{ marginTop: 13, padding: 11, border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)' }}
-                  >
-                    <div style={{ ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)', marginBottom: 7 }}>
-                      {pending.type === 'plan' ? '执行前 — 需要你批准这份计划' : '需要批准才能继续'}
-                    </div>
-                    <div style={{ ...mono, color: 'var(--text-1)', marginBottom: 10 }}>
-                      <span style={{ color: 'var(--text-3)' }}>{pending.type === 'plan' ? 'plan ›' : `${pending.name} ›`}</span> {pending.confirmText || pending.input}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <span style={{ ...mono, color: 'var(--text-2)' }}>允许吗？(y/N)</span>
-                      <button onClick={approve} style={btnStyle(true)}>y · 允许</button>
-                      <button onClick={deny} style={btnStyle(false)}>N · 拒绝</button>
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
+                </>
+              ) : (
+                <span className="hd-strip-label">chat ›</span>
+              )}
             </div>
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10 }}>
-            <p style={{ ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)', margin: 0, display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--text-2)' }}>决定</span>→<span style={{ color: 'var(--text-2)' }}>执行</span>→<span style={{ color: 'var(--text-2)' }}>观察</span>
-              <span style={{ color: 'var(--text-1)', fontWeight: 500 }}>↺ 直到 ✓ 完成</span>
-            </p>
-            {done && (
-              <button onClick={() => reset(mode)} style={{ ...btnStyle(false), display: 'inline-flex', alignItems: 'center', gap: 6 }}>↺ 重新运行</button>
+            {view === 'chat' ? (
+              /* ── chat：仿真聊天 app ─────────────────────────── */
+              <div className="hd-window">
+                <div className="hd-winbar">
+                  <div className="hd-chat-id">
+                    <span className="hd-chat-av" aria-hidden="true" />
+                    <span className="hd-chat-name">AI 助手</span>
+                  </div>
+                </div>
+                <div className="hd-chatbody">
+                  <div className="hd-bubble-user">{SHARED_PROMPT}</div>
+                  <div className="hd-asst">
+                    <span className="hd-asst-av" aria-hidden="true" />
+                    <div className="hd-asst-msg">
+                      {chatPhase === 'thinking' ? (
+                        <span className="hd-think" aria-label="正在输入"><span /><span /><span /></span>
+                      ) : (
+                        <>{CHAT_REPLY.slice(0, chatTyped)}{!chatDone && caret}</>
+                      )}
+                    </div>
+                  </div>
+                  {chatDone && (
+                    <motion.div
+                      className="hd-deadend"
+                      initial={reduce ? false : { opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, ease: EASE_OUT }}
+                    >
+                      <span className="x" aria-hidden="true">✕</span>
+                      <span>{CHAT_DEADEND}</span>
+                    </motion.div>
+                  )}
+                </div>
+                <div className="hd-chatinput">
+                  <div className="field">发消息……</div>
+                  <span className="send" aria-hidden="true">↑</span>
+                </div>
+              </div>
+            ) : (
+              /* ── agent：仿真 CLI（浅灰面，非深色终端）──────────── */
+              <div className="hd-window">
+                <div className="hd-winbar">
+                  <div className="hd-dots" aria-hidden="true">
+                    {[0, 1, 2].map((i) => <span key={i} className="hd-dot" />)}
+                  </div>
+                  <span className="hd-winname">npx tsx cli.ts — your-own-agent</span>
+                </div>
+
+                <div ref={scrollRef} className="hd-body-scroll">
+                  {/* key={mode} → 切换 ReAct/Plan 时旧 transcript 不再硬闪，新的淡入浮起 */}
+                  <motion.div
+                    key={mode}
+                    initial={reduce ? false : { opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: EASE_OUT }}
+                  >
+                    {lines.map((l, i) => (
+                      <motion.div
+                        key={i}
+                        initial={reduce ? false : { opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.26, ease: EASE_OUT }}
+                      >
+                        {renderLine(l, i)}
+                      </motion.div>
+                    ))}
+
+                    {/* 活终端：两步之间「思考」、且没有行正在打字时的闪烁光标 */}
+                    {!pending && !done && lines.length > 0 && step < scn.script.length && !lines.some((l) => l.streaming) && (
+                      <div style={{ ...mono, marginTop: 8 }}>
+                        <span className="hd-caret">▊</span>
+                      </div>
+                    )}
+
+                    {pending && (
+                      <motion.div
+                        className="hd-pending"
+                        initial={reduce ? false : { opacity: 0, scale: 0.98, y: 4 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        transition={{ duration: 0.24, ease: EASE_OUT }}
+                        style={{ marginTop: 13, padding: 11, border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)' }}
+                      >
+                        <div style={{ ...mono, fontSize: 'var(--text-2xs)', color: 'var(--text-3)', marginBottom: 7 }}>
+                          {pending.type === 'plan' ? '执行前 — 需要你批准这份计划' : '需要批准才能继续'}
+                        </div>
+                        <div style={{ ...mono, color: 'var(--text-1)', marginBottom: 10 }}>
+                          <span style={{ color: 'var(--text-3)' }}>{pending.type === 'plan' ? 'plan ›' : `${pending.name} ›`}</span> {pending.confirmText || pending.input}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                          <span style={{ ...mono, color: 'var(--text-2)' }}>允许吗？(y/N)</span>
+                          <button onClick={approve} style={btnStyle(true)}>y · 允许</button>
+                          <button onClick={deny} style={btnStyle(false)}>N · 拒绝</button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                </div>
+              </div>
+            )}
+          </motion.div>
+
+          {/* 设备脚注 */}
+          <div className="hd-devfoot">
+            {view === 'chat' ? (
+              <span>chat · 一问一答，没有下一步</span>
+            ) : (
+              <>
+                <span className="loop">
+                  <span>决定</span> → <span>执行</span> → <span>观察</span>　<b>↺ 直到 ✓ 完成</b>
+                </span>
+                {done && (
+                  <button onClick={() => reset(mode)} className="hd-replay" type="button">↺ 重新运行</button>
+                )}
+              </>
             )}
           </div>
         </div>
       </div>
+    </div>
   )
 }

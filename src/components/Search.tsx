@@ -49,6 +49,7 @@ export default function Search() {
   return (
     <>
       <button
+        className="search-trigger"
         onClick={() => setOpen(true)}
         aria-label="搜索章节 (⌘K)"
         style={{
@@ -67,11 +68,11 @@ export default function Search() {
         onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
         onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg className="search-trigger-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
         </svg>
-        <span>搜索</span>
-        <kbd style={{
+        <span className="search-trigger-label">搜索</span>
+        <kbd className="search-trigger-kbd" style={{
           marginLeft: 'auto',
           fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xs)',
           color: 'var(--text-3)', border: '1px solid var(--border)',
