@@ -1,6 +1,6 @@
 # 写作规范（单源三端的兼容约定）
 
-`src/content/docs/*.md` 是唯一内容源，同时供给：Astro + Starlight 网站、pandoc 电子书（epub/PDF）、llms.txt（agent 可读端，由 starlight-llms-txt 插件生成）。
+`src/content/docs/*.md` 是唯一内容源，同时供给：Astro 网站（自定义布局）、pandoc 电子书（epub/PDF）、llms.txt（agent 可读端，生成脚本待建）。
 本规范的每条都为了"写一份、三端不坏"。评审章节时按此检查。
 
 ## 文件与结构
@@ -8,7 +8,7 @@
 - 文件名：`NN-slug.md`（如 `03-agent-loop.md`），**不含空格**；章节顺序 = 文件名排序（电子书脚本依赖此约定）
 - 附录：`appendix-a-*.md` 等（字母排在数字后，自然落在书尾）
 - 每章**有且仅有一个 H1**（章标题），正文从 H2 开始
-- 新章上线：把 `.md` 文件放进 `src/content/docs/` 即可，Starlight 侧边栏按 `astro.config.ts` 中的规划目录自动显示，无需改配置
+- 新章上线：把 `.md` 文件放进 `src/content/docs/` 即可，侧边栏按 `astro.config.ts` 导出的 `CHAPTER_PLAN` 自动显示，无需改配置
 - 五段式结构（H2）：为什么需要它 → 原理拆解 → 动手实现 → 跑起来看效果 → 练习与延伸
 
 ## 图片
@@ -59,8 +59,8 @@ import AgentTrace from '../../components/AgentTrace'
 
 - **`.md` 文件**（普通章节）：禁 MDX / JSX 语法——这些文件要过 pandoc，混入 JSX 会破坏电子书构建
 - **`.mdx` 文件**（孤岛章节）：JSX 合法；交互孤岛优先用 `AgentTrace`——它的 `StaticIsland` 形态即电子书 / 无 JS 降级，无需手配静态图。若自定义其他交互组件，须自带静态降级形态
-- Starlight 内置容器（`::: tip`、`::: note` 等 Markdown directives）可用——pandoc 会解析为无样式 div，内容不丢，但电子书端无视觉效果，慎用于关键信息
-- 章间互链用相对路径：`[上一章](./02-tool-use.md)`（Starlight 自动转 html 链接；电子书跨章锚点 M4 校对时统一核验）
+- `::: tip` 等 Markdown directives 已随 Starlight 移除，**不再可用**；提示框仅在 `.mdx` 章节用 `Callout` 组件（`src/components/Callout`）
+- 章间互链用相对路径：`[上一章](./02-tool-use.md)`（构建时转 html 链接；电子书跨章锚点 M4 校对时统一核验）
 - 代码块标注语言（` ```ts `、` ```bash `），三端高亮/语义都依赖它
 
 ## 章节模板

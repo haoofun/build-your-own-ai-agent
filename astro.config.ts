@@ -23,14 +23,14 @@ export const CHAPTER_PLAN: Record<string, [file: string, label: string][]> = {
   '第二部分 · 从玩具到可用': [
     ['06-system-prompt', '06 · 系统提示词与环境感知'],
     ['07-permissions', '07 · 权限系统：信任但确认'],
-    ['08-context', '08 · 上下文管理：对抗有限的窗口'],
-    ['09-robustness', '09 · 健壮性：真实世界的网络与错误'],
+    ['08-token-awareness', '08 · token 感知：计数、截断与缓存'],
+    ['09-compaction', '09 · 上下文压缩：compaction'],
+    ['10-robustness', '10 · 健壮性与会话生命周期'],
   ],
   '第三部分 · 进阶能力': [
-    ['10-subagents', '10 · 子 agent：分而治之'],
-    ['11-plan-todo', '11 · 计划与待办：让 agent 有条理'],
-    ['12-mcp', '12 · MCP：接入外部世界'],
-    ['13-skills', '13 · 自定义命令与 Skills'],
+    ['11-subagents', '11 · 子 agent：分而治之'],
+    ['12-plan-commands-skills', '12 · 计划、命令与 Skills'],
+    ['13-mcp', '13 · MCP：接入外部世界'],
   ],
   '第四部分 · 收尾': [
     ['14-terminal-ui', '14 · 终端体验打磨'],
