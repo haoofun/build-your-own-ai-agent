@@ -26,7 +26,7 @@
   /* 文字层级 */
   --text-1:  #fafafa;   /* zinc-50  标题/强调 */
   --text-2:  #a1a1aa;   /* zinc-400 正文 */
-  --text-3:  #71717a;   /* zinc-500 辅助 */
+  --text-3:  #898992;   /* zinc-450（自定义，介于 zinc-400/500 之间）— zinc-500 对 --bg-alt 只有 3.67:1，不达 AA */
 
   /* 边框 */
   --border:        #27272a;   /* zinc-800 */
@@ -278,9 +278,11 @@ img, svg { display: block; }
               border-color var(--duration-fast) var(--ease),
               color var(--duration-fast) var(--ease);
 }
-.prose pre.astro-code:hover .code-copy { opacity: 1; }
-.prose pre.astro-code:hover .code-lang { opacity: 0; }
-.code-copy:hover { color: var(--text-1); border-color: var(--text-1); }
+.prose pre.astro-code:hover .code-copy,
+.prose pre.astro-code:focus-within .code-copy { opacity: 1; }
+.prose pre.astro-code:hover .code-lang,
+.prose pre.astro-code:focus-within .code-lang { opacity: 0; }
+.code-copy:hover, .code-copy:focus-visible { color: var(--text-1); border-color: var(--text-1); }
 @media (hover: none) {
   .code-copy { opacity: 1; }
   .code-lang { opacity: 0; }
@@ -524,6 +526,21 @@ img, svg { display: block; }
   transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 .sidebar-outline-link:hover { color: var(--text-2); background: var(--bg-soft); }
+
+.sidebar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 0 10px;
+  margin-bottom: 20px;
+}
+.sidebar-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+}
 
 .sidebar-group { margin-bottom: 24px; }
 .sidebar-group-label {

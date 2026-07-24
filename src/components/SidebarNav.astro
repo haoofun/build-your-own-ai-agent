@@ -18,6 +18,15 @@ const activeN = activeSlug ? SLUG_TO_N[activeSlug] : undefined
     课程大纲
   </a>
 
+  <div class="sidebar-legend" aria-label="章节状态图例">
+    {(['published', 'writing', 'planned'] as const).map((status) => (
+      <span class="sidebar-legend-item">
+        <span class={`sidebar-status s-${status}`} aria-hidden="true"></span>
+        {STATUS_META[status].label}
+      </span>
+    ))}
+  </div>
+
   {PARTS.map((group) => {
     const slug = group.chapters[0] && N_TO_SLUG[group.chapters[0].n]
     return (

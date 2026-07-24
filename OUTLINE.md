@@ -131,9 +131,9 @@ MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，�
 ## 六、发布管线（单源三端）
 
 ```
-src/content/docs/*.md  ──→ Astro + Starlight ──→ 网站（含章节导航、llms.txt）
+src/content/docs/*.md  ──→ Astro（自定义布局）──→ 网站（含章节导航、llms.txt）
                         └─→ pandoc ────────────→ epub / PDF（电子书，定价/赞助制）
-src/content/docs/*.mdx ──→ Astro + Starlight ──→ 网站（交互孤岛章节）
+src/content/docs/*.mdx ──→ Astro（自定义布局）──→ 网站（交互孤岛章节）
                         └─→ 电子书跳过（后续加预处理管线再补）
 仓库本体 = GitHub（README 即课程入口）
 ```

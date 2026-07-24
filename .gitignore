@@ -9,3 +9,6 @@ dist/
 
 # 运行时产物：@playwright/mcp 抓取的页面快照
 spike/.playwright-mcp/
+
+# Impeccable 设计技能的本地评审快照（工具产物，非项目内容单源）
+.impeccable/
