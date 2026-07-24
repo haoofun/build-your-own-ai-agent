@@ -19,6 +19,7 @@ export default function Callout({ type = 'info', title, children }: Props) {
     <div style={{
       margin: '1rem 0',
       border: `1px solid ${c.border}`,
+      borderLeftWidth: '3px',
       borderRadius: 'var(--radius-sm)',
       background: 'var(--bg-soft)',
       padding: '0.75rem 1rem',

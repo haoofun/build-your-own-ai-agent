@@ -83,7 +83,7 @@ export default function AgentTrace({
       style={{
         border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
         background: 'var(--bg)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden',
-        fontFamily: 'var(--font-sans)', outline: 'none',
+        fontFamily: 'var(--font-sans)',
       }}
     >
       <IslandHeader title={title} subtitle={subtitle} />
@@ -107,7 +107,14 @@ export default function AgentTrace({
         <span style={{ flex: 1 }} />
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xs)', color: 'var(--text-3)' }}>{Math.min(revealed, total)} / {total}</span>
         <div style={{ width: '84px', height: 3, borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
-          <div style={{ width: `${(Math.min(revealed, total) / total) * 100}%`, height: '100%', background: 'var(--text-1)', transition: 'width .3s var(--ease, ease)' }} />
+          <div
+            style={{
+              width: '100%', height: '100%', background: 'var(--text-1)',
+              transform: `scaleX(${Math.min(revealed, total) / total})`,
+              transformOrigin: 'left',
+              transition: 'transform .3s var(--ease, ease)',
+            }}
+          />
         </div>
       </div>
     </div>
