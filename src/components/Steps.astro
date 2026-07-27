@@ -1,0 +1,42 @@
+---
+/**
+ * Steps —— 装配式操作序列
+ *
+ * THESIS: 步骤是「装配指令」，不是进度条。序号是刻度，不是徽章 —— 拒绝文档站默认的
+ *   灰色实心圆 + 居中白字 stepper（那是把序号当装饰）。这里唯一的新信息是「顺序」，
+ *   所以只画顺序：一条 1px 竖轨，被序号打断，重新接上。
+ * OWN-WORLD: zinc 单色，零填充色块。轨道 = var(--border) 1px；序号 = IBM Plex Mono、
+ *   text-3 灰、decimal-leading-zero（与站点 chapter-01 徽章、git tag chapter-01 同一套
+ *   数字语法）。序号首行与正文首行同基线（28px = 16px × 1.75）。步内代码块直接坐在
+ *   轨道右侧，bg-soft 面与轨道形成唯一的明暗层级。
+ * STORY: 读者一眼看出「这是要照着敲的一串动作」，知道自己在第几步、还剩几步，
+ *   每段代码归属哪一步不需要再读一遍上下文。
+ * FIRST VIEWPORT: 左 25px 是刻度列（序号 + 轨道），右侧从 40px 起是完整阅读栏宽度的
+ *   正文与代码块 —— 步骤不缩窄行长，长文阅读的核心约束不让步。
+ * FORM: 竖轨刻度表（工程图纸 / 装配说明的数字标注），而非卡片列表。
+ *
+ * 写法（作者在 .mdx 里）：`<Steps>` 包住一个标准 Markdown 有序列表。
+ *
+ *   <Steps>
+ *   1. **拿到 API key** —— 去 console 建一个……
+ *
+ *      ```bash
+ *      export ANTHROPIC_API_KEY="sk-ant-…"
+ *      ```
+ *   2. **发出第一个请求**……
+ *   </Steps>
+ *
+ * 降级：内容本体就是合法的有序列表，剥掉 <Steps> 标签即为电子书 / llms.txt 形态，
+ * pandoc 端零预处理成本。样式全部在 custom.css 的「步骤序列」小节，零 JS。
+ */
+interface Props {
+  /** 额外 class（可选），用于个别页面的局部微调 */
+  class?: string
+}
+
+const { class: className } = Astro.props
+---
+
+<div class:list={['steps', className]}>
+  <slot />
+</div>

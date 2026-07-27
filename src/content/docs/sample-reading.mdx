@@ -7,6 +7,7 @@ draft: true
 import Callout from '../../components/Callout'
 import AgentTrace from '../../components/AgentTrace'
 import StaticIsland from '../../components/StaticIsland'
+import Steps from '../../components/Steps.astro'
 
 <Callout type="info" title="设计 fixture">
 这是一个**设计样章**，只为压测阅读排版——散文、代码块、callout、孤岛、列表、引用。**不是正式教学内容**，也不进 sidebar 与大纲。
@@ -78,6 +79,30 @@ function readFile({ path }: { path: string }): ToolResult {
 同一类孤岛在无 JS / 电子书端会降级成**静态形态**（`StaticIsland`）——全展开、可选中、不依赖交互，但同一条链、同一套角色标注：
 
 <StaticIsland title="静态降级形态" subtitle="ebook / no-JS" caption="电子书端：AgentTrace 降级为 StaticIsland，整条链全展开，文本可选中、可重排。" />
+
+## 跑起来看效果
+
+装配式操作序列用 `Steps` 排版——它只包住一个标准 Markdown 有序列表，序号与轨道由样式画出：
+
+<Steps>
+1. **准备环境变量**。把 key 写进当前 shell，`cli.ts` 启动时从 `process.env` 读它，不落盘、不进 git。
+
+   ```bash
+   export ANTHROPIC_API_KEY="sk-ant-..."
+   ```
+2. **让 loop 认识这个工具**。工具声明和执行函数分两处注册，别把它们塞进同一个 switch——第 11 章的子 agent 要复用这张表。
+
+   ```ts
+   const TOOLS = [readFileSchema] // [!code ++]
+   const HANDLERS = { read_file: readFile } // [!code ++]
+   ```
+3. **跑一次**，问它一个只能靠读文件回答的问题。终端里应当出现一次 `tool_use`、一次 `tool_result`，然后才是模型的回答。
+
+   ```bash
+   npx tsx cli.ts "package.json 里声明了哪些依赖？"
+   ```
+4. **确认边界**。把 `read_file` 的执行函数临时改成 `throw new Error('boom')`，再跑一遍——agent 应该把错误当成一条普通的工具结果接住，而不是整个进程崩掉。这就是第 10 章「工具错误三段式」的前置直觉。
+</Steps>
 
 ## 练习与延伸
 

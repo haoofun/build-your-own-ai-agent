@@ -55,6 +55,28 @@ import AgentTrace from '../../components/AgentTrace'
 - **静态降级自动化**：`AgentTrace` 的无 JS / 电子书形态是 `StaticIsland`（同一条链、全展开、纯静态渲染），作者无需手配静态图；M4 预处理统一把 `AgentTrace` 换成 `StaticIsland`
 - **pandoc 兼容底线**：能用 `.md` 就不升 `.mdx`；只有确实需要交互组件的章节才改后缀
 
+## 步骤序列（Steps）
+
+「照着敲的一串动作」用 `Steps` 排版：环境准备（装 Node、拿 API key、发布流程）与「动手实现」里的分步改代码。**它不占孤岛配额**——纯排版件、零 JS、零交互。
+
+````mdx
+import Steps from '../../components/Steps.astro'
+
+<Steps>
+1. **拿到 API key** —— 去 console 建一个，写进当前 shell。
+
+   ```bash
+   export ANTHROPIC_API_KEY="sk-ant-..."
+   ```
+2. **跑一次**，确认终端里出现一次 `tool_use`。
+</Steps>
+````
+
+- **内容必须是一个标准 Markdown 有序列表**：`<Steps>` 只负责画序号与轨道，不定义自己的 `<Step>` 标签。剥掉这层标签即为电子书 / llms.txt 形态，**pandoc 端零预处理成本**
+- 步内的代码块 / 段落缩进到列表项对齐（`1. ` 后缩进 3 空格），否则 markdown 会把它们踢出该步
+- 每步以 `**加粗动作**` 开头：加粗自动抬到标题墨色，形成「动作 → 解释 → 命令」的读法
+- 概念性流程（讲原理的 N 步循环）**不用** `Steps`——那是 `AgentTrace` 的活；`Steps` 只服务「读者要执行的动作」
+
 ## 语法红线
 
 - **`.md` 文件**（普通章节）：禁 MDX / JSX 语法——这些文件要过 pandoc，混入 JSX 会破坏电子书构建
