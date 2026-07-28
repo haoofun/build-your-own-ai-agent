@@ -364,7 +364,29 @@ Eval 运行固定任务，按测试是否通过、文件内容是否匹配来判
 - 先写具体实现；只有出现真实重复时再拆文件或抽接口。
 - 中间章节不预留空回调、空模块或最终目录。每章只加入当章已经需要的代码，并保持可运行。
 
-## 十一、与生产级 coding agent 的差距
+## 十一、不变量清单
+
+下面每一条都必须在最终成品中永远成立。它们不是风格偏好，而是 spike 周用真实故障换来的结论——每条都配一个实测反例（出处见 `SPIKE-NOTES.md`）。重构、简化或让 AI 改代码后，逐条对照这张表；删掉一条之前，先解释那个反例为什么不会再发生。
+
+这些故障的共同点是**不抛异常**：API 返回 200、进程正常退出、模型回答流畅，但结果是错的。所以验收必须读对话内容本身，不能看"跑完没报错"。
+
+| # | 不变量 | 实测反例 |
+|---|---|---|
+| 1 | 一次 assistant 响应里的所有 tool_result 合并进**同一条** user message，紧跟其后 | D2：分多条 push，且共享同一个 content 数组引用 → 同一 `tool_use_id` 出现两次 → 400。单工具完全正常，只有并行才触发 |
+| 2 | 工具的失败必须变成模型读得到的文本；成功也必须返回有内容的确认 | D1 漏 `await` 喂给模型 `"{}"`，模型如实回答"文件是空的"；D2 工具 catch 后 `console.log`，模型频道收到 `undefined`。空 tool_result 是另一种静默垃圾 |
+| 3 | `try/catch` 只住在派发处一个地方；但 Bash 非零 exit 是业务结果，必须在工具内转成正常 `ToolResult` | D2：`promisify(exec)` 非零 exit 直接 reject，grep 无匹配（exit 1）被当成工具失败 |
+| 4 | 参数校验先于权限询问；免审跟着工具走（`requiresApproval`），不在 loop 里按名字判断 | D3 焊死 `name !== "read_file"` → D5 grep、todo 被误问，D6 仍坐在这条债上 |
+| 5 | `AbortSignal` 从第一天就穿进 loop，一路到子进程、子 agent、MCP、总结调用 | D2–D6 每天验证 signal 穿透与无孤儿进程。这是全局设计约束，事后加不进去 |
+| 6 | `runAgent` 不持有跨 run 状态；状态从入参进、从返回值出，入参数组不被就地修改 | D5 todo 是模块级全局，只因 explorer 没拿到 todo 工具才没串；D4 `let messages = opts.messages` 压缩前改调用方数组、压缩后不改 |
+| 7 | 入口代码单独成文件；import 任何模块都不能触发真实 API 调用 | D2：`agent-sdk.ts` 底部直接 `await runAgent(...)`，子 agent 与测试一 import 就烧钱 |
+| 8 | 模型返回的内容进入 `messages` 前，必须确认它没有被截断 | D4：summary 只 guard 了空字符串，没查 `stop_reason=max_tokens`，半句话照样塞回上下文 |
+| 9 | compaction 在枚举切点时就排除非法位置，而不是切完再校验；原始用户任务逐字保留，不进 summary | D4：run F 与 run G 同代码同 prompt，F 把原始问题压丢，结尾反问用户"主要问题是什么" |
+| 10 | 触发线与压缩后地板之间必须留 gap（`reserveTokens` 与 `keepRecentTokens` 分开） | D4：真 summary 让压缩后上下文恒高于阈值，turn 4 起每轮重压，compaction 从省钱变烧钱 |
+| 11 | 余量判断只看当前 messages 估计或最近一次主请求的完整 input token；usage 只做账本，且必须全额上卷（含 compaction 与子 agent） | D5：父账打印 2603，explorer 实烧 26639，账面漏近 90% |
+| 12 | 子 agent 的结论必须附文件路径、行号或命令输出；自然语言结论不算证据 | D5：explorer 自信答错（说 compaction 在 README 与 node_modules，没找到真正实现它的文件），父 agent 只收到一段流畅字符串，无从校验 |
+| 13 | 解析响应只取认识的字段，未知字段与未知消息忽略而不是崩溃 | D1：响应冒出 `caller`、`stop_details`、`inference_geo`；D6：MCP 对未知 id 与通知只 warn |
+
+## 十二、与生产级 coding agent 的差距
 
 BYOAA 证明的是 coding agent 核心机制可以被从零实现，不是几千行代码已经等价于成熟产品。下面这张图用于 README、结尾和求职讲解：左边是本书交付，右边是生产系统还必须解决的问题。
 
@@ -404,7 +426,7 @@ flowchart LR
 
 这条边界本身是项目成果的一部分：它说明作者知道哪些机制已经实现、哪些只是被简化，以及继续走向生产会遇到什么工程问题。
 
-## 十二、为什么明确不做
+## 十三、为什么明确不做
 
 “不做”不表示这些能力不重要，而是它们引入的复杂度明显大于在本课程中的新增教学价值。
 
@@ -515,7 +537,7 @@ README 最终放一张完整的能力证据矩阵。下面记录的是 **1.0 的
 
 时间投入默认按 **75% 核心实现与验证、15% 一个高信号番外、10% 边界文档和面试整理** 分配。以后若真有产品需求，可以修改现有代码再实现；当前不为番外预留结构。
 
-## 十三、教学顺序
+## 十四、教学顺序与章节落点
 
 本文描述的是第 16 章结束时的形状，不是第一章的脚手架。章节仍按 `OUTLINE.md` 渐进构建：
 
@@ -524,3 +546,32 @@ README 最终放一张完整的能力证据矩阵。下面记录的是 **1.0 的
 - 最后加入 Session、子 agent、Skills、MCP、终端体验和 eval。
 
 每个抽象必须由读者已经遇到的问题引出。没有当前问题支撑的抽象，不提前加入。
+
+### 落点表
+
+超前设计不发生在终点，发生在中途——照着最终形状写第 7 章，会一次性把四个字段和四种 reason 全写出来。这张表给出每个名字第一次允许出现的位置，以及它在那一章结束时的上限。
+
+| 概念 / 名字 | 首次出现 | 引它出场的问题 | 该章结束时的上限 |
+|---|---|---|---|
+| 一次 API 调用 + 对话壳 | 01 | 模型是无状态的，连"我叫什么"都答不出 | 没有 messages 累积，只有单句请求 |
+| Tool 声明、`tool_use` / `tool_result` | 02 | 模型只能说话，不能动手 | 一两个玩具工具，直接派发，不建 Map |
+| `runAgent` 雏形、messages 累积、`maxTurns` | 03 | 一次调用做不完一个任务；空转烧的是真钱 | 局部变量；没有 `SessionState`、事件、`RunResult` |
+| Write / Edit 与 `details`（diff） | 04 | 终端要看见改了什么，模型不需要看 diff | 只是这两个工具的返回值，还不是通用协议 |
+| `ExecutionEnv` | 04 | 工具直接 `import fs` 就没法测、没法换执行位置 | FileSystem + Shell 两个接口，一个 Node 实现 |
+| Bash、超时与输出截断雏形 | 05 | 一条命令吐 10 万行 stdout | 上限写死在 bash 工具里，不抽通用截断策略 |
+| `callModel` 函数边界、SDK | 第一部分末 | 两份 loop 的维护税；后续策略要从外部插入 | 一个可替换的函数，不是 Provider 层或 Provider 类 |
+| 流式 delta 与 `onEvent` | 第二部分开头 | 敲完只能干等整段返回 | 事件只报文本增量与工具起止，不建 EventBus |
+| system prompt 分层组装、项目指令 | 06 | 模型猜路径，也不知道当前分支有什么改动 | 一个普通函数，每次 prompt 重新组装，不为它维护状态 |
+| `requiresApproval`、权限询问、"总是允许" | 07 | agent 能悄悄 `rm -rf` | 记忆只在 CLI 进程内，不进 JSONL |
+| `Usage` 四字段、通用截断、cache breakpoint | 08 | 看不见窗口还剩多少，账单也降不下来 | usage 是账本，不能拿来判断余量 |
+| compaction、`reserveTokens` / `keepRecentTokens` | 09 | 长对话爆窗口 | 只有主动压缩一条路径，压不动就 `failed` |
+| `RunResult.reason` 四值、`isError`、`SessionState`、JSONL | 10 | 429、Ctrl+C、工具报错、关掉终端就全没了 | `SessionState` 此时只有 `messages` 和 `usage` |
+| Task Tool、只读 Tool Map | 11 | 搜索类任务把主上下文污染掉 | 复用同一个 `runAgent`，深度锁一层 |
+| `todos`、`skills` 字段，`/` 命令 | 12 | 多步任务漏步骤；元操作没有入口 | 命令是一个 `switch`，不是框架；至此 `SessionState` 四个字段才齐 |
+| MCP 工具进同一个 Map | 13 | 生态里现成的能力接不进来 | 不建 Manager，不做重连与下架 |
+| 终端 Renderer | 14 | 流式输出闪烁、错位 | 只消费 `onEvent`，不引入第二套记录协议 |
+| `callModel` 注入替换、固定任务集 | 15 | 怎么知道它真的变好了 | 测试传一个按脚本返回的函数，不建 Faux Provider 类 |
+
+判据是：写某一章时，落点在它之后的名字一个都不出现；本表右列就是该章的上限，第三节那三档图正是这张表的三个截面。`SessionState` 的四个字段分别在 03（作为局部变量）、08、10、12 才凑齐——这是"字段按需长出来"最典型的例子。
+
+流式与 `onEvent` 的形状是全表唯一还没被实测确认的一项（spike 周零接触）。落点在它之前的章节可以照常写；写到第二部分开头之前，需要先跑一次串通「流式 → 事件 → 最小 renderer」的 mini-spike，否则这个形状会在后面被推翻并连带返工。
