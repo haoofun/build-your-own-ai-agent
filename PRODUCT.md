@@ -24,15 +24,15 @@ web
 
 **渐进式可运行的骨架 + 诚实暴露踩坑的血肉，两条合起来才是邻居产品拿不走的。**
 
-- 渐进式：16 章每章一个可运行的里程碑，每章比上一章明显更强，代码按章打 git tag —— 成品导读（Windy）与源码逆向分析（learn-claude-code）给不了这个。
+- 渐进式：先固定每个 Part 的出口，再把它切成一组可运行、逐步增强的 checkpoint；冻结后按章打 git tag —— 成品导读（Windy）与源码逆向分析（learn-claude-code）给不了这个。
 - 诚实：spike 周实测过的失败原样写进正文（compaction 阈值 thrash 反而烧钱、子 agent 自信答错且父无从校验、MCP initialize 无超时会拖垮整个 agent）—— 这些是跑出来的，不是编出来的。
 - 深度免费：对标 CodeCrafters《Build your own Claude Code》（付费，止步于 Read/Write/Bash + 基础 loop），本书免费且一路走到 compaction / 子 agent / MCP / skills。
 
 ## Operating Context
 
-- **单源三端**：`src/content/docs/` 是内容唯一源，喂网站 / pandoc 电子书 / llms.txt。三端权重不同：网站与 llms.txt 是质量主战场，电子书是象征性副产物（M4 才认真生产）。
-- **写一章、上线一章**：章节完成即发布，站点的章节状态（可读 / 写作中 / 规划中）如实反映进度，不预告未写完的东西。
-- **章节格式**：受约束的 `.mdx`。正文是标准 Markdown，交互教学模块用 React 组件经 Astro `client:*` 按需水合；`Steps` 这类纯排版件零 JS、剥掉标签即合法 markdown。电子书降级预处理留到 M4。
+- **单源三端**：`src/content/docs/` 是内容唯一源，喂网站 / pandoc 电子书 / llms.txt。三端权重不同：网站与 llms.txt 是质量主战场，电子书是象征性副产物（M6 才认真生产）。
+- **按 Part 规划、写一章上线一章**：未开发 Part 的章节只标为暂定；进入 Part 前先跑通出口再切章，章节完成即发布，站点状态如实反映进度。
+- **章节格式**：受约束的 `.mdx`。正文是标准 Markdown，交互教学模块用 React 组件经 Astro `client:*` 按需水合；`Steps` 这类纯排版件零 JS、剥掉标签即合法 markdown。电子书降级预处理留到 M6。
 - **读者的物理场景**：工程师在桌面浏览器、室内常光、专注模式下连读 30–60 分钟长文并对照代码块，另一半时间在自己的终端里跟着敲。
 - **协作方式**：核心代码与讲解由作者本人写（求职需要经得起面试追问）；AI 负责架构对手盘、review、查证、构建管线、翻译润色，不代写整章成品。
 
@@ -43,7 +43,7 @@ web
 - **默认 API**：Anthropic Messages API；附录 A 提供 OpenAI 兼容端点方案（解决国内读者访问）。默认教学模型 Haiku，ch00 承诺全书 ~$5 预算。
 - **技术栈事实**：纯 Astro + React 岛 + 自建布局（2026-06-22 移除 Starlight）；搜索是 Fuse.js + 构建期自产索引（2026-07-25 弃用 Pagefind，其 CJK 分词有已知未解问题）；字体自托管，不碰 Google Fonts。
 - **License**：代码 MIT，书稿文字 CC BY-NC-SA 4.0，© 2026 haoo。
-- **未决**：电子书的 MDX 降级管线（M4）；陪读 tutor skill 的真实能力（M4）；英文版时间表。
+- **未决**：电子书的 MDX 降级管线（M6）；陪读 tutor skill 的真实能力（M6）；英文版时间表。
 
 ## Brand Commitments
 
@@ -58,7 +58,7 @@ web
 **真实存在、可直接用的素材**：
 
 - 六天 spike 的实测记录与失败案例（`SPIKE-NOTES.md`）—— 正文「为什么需要它」的素材来源，全部是跑出来的。
-- 课程大纲与每章里程碑（`OUTLINE.md`、`src/data/chapters.ts`），章节状态单源。
+- Part 目标、当前章节假设与里程碑（`OUTLINE.md`、`src/data/chapters.ts`），章节状态单源。
 - 00–05 章的写作中草稿（`src/content/docs/`）+ 设计样章 `sample-reading.mdx`（draft，排版压测用）。
 - 站点本身：首页 CliDemo（预录回放，非真调 API）、AgentTrace / StaticIsland 教学孤岛、Steps 操作序列。
 
@@ -67,7 +67,7 @@ web
 - **最终成品 demo GIF**：尚未录制，正文完结后才有。
 - **最终代码行数**：「不到 ___ 行」的具体数字待代码定稿后回填，任何页面都不许先填一个数。
 
-**同样不得当作已交付能力宣传**（事实状态，非作者点名）：star 数 / 读者数 / 推荐语一个都没有；电子书 epub/PDF 到 M4 才生产；陪读 skill `public/skill/tutor.md` 目前是防 404 的占位文件。
+**同样不得当作已交付能力宣传**（事实状态，非作者点名）：star 数 / 读者数 / 推荐语一个都没有；电子书 epub/PDF 到 M6 才生产；陪读 skill `public/skill/tutor.md` 目前是防 404 的占位文件。
 
 ## Product Principles
 

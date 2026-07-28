@@ -72,11 +72,11 @@ https://build-your-own-ai-agent.com/skill/tutor.md</code>
         <div class="section-head">
           <h2>你将亲手造出什么</h2>
           <p class="section-sub">
-            每一章都有一个可运行的里程碑，比上一章明显更强。下面是完整的构建轴——按顺序读，按顺序写。
+            每个 Part 都有清楚的出口能力；进入开发后，再把它切成一组可运行、逐步增强的章节。下面的章名是当前展开，不是不会变化的目录合同。
           </p>
           <p class="roadmap-status">
             <span class="status-dot"></span>
-            全书写作中：spike 周已跑通核心能力链，正在写第 0–5 章。结构已定，正文逐章补全、过程公开。
+            终局能力已定，Part 目标已重排；正在推进序章与第一部分，未发布章节仍可重切。
           </p>
         </div>
 
@@ -88,6 +88,7 @@ https://build-your-own-ai-agent.com/skill/tutor.md</code>
                 <span class="part-title">{part.title}</span>
                 {part.sub && <span class="part-sub">· {part.sub}</span>}
               </div>
+              {part.exit && <p class="part-exit"><span>出口 →</span>{part.exit}</p>}
               <div class="rungs">
                 {part.chapters.map((ch) => {
                   const st = chapterStatus(ch.n)
@@ -104,7 +105,7 @@ https://build-your-own-ai-agent.com/skill/tutor.md</code>
           ))}
         </div>
 
-        <a href="/outline" class="roadmap-more">查看完整大纲（含 16 章 + 3 附录）→</a>
+        <a href="/outline" class="roadmap-more">查看 Part 目标与当前章节假设 →</a>
       </div>
     </section>
 
@@ -149,7 +150,7 @@ https://build-your-own-ai-agent.com/skill/tutor.md</code>
           </div>
           <div class="diff-row">
             <dt>渐进式构建，逐行看得懂</dt>
-            <dd>不是把成品代码摊开导读。每一章从上一章的可运行版本出发，只加一个能力，代码按章打 git tag，随时能 diff 对照。</dd>
+            <dd>不是把成品代码摊开导读。每个 Part 先跑通出口，再切成可运行、逐步增强的章节；发布后按章打 git tag，随时能 diff 对照。</dd>
           </div>
           <div class="diff-row">
             <dt>讲内部机制，不是用法</dt>
@@ -491,6 +492,18 @@ https://build-your-own-ai-agent.com/skill/tutor.md</code>
   }
   .part-title { font-size: var(--text-body); font-weight: 600; color: var(--text-1); letter-spacing: -0.01em; }
   .part-sub { font-size: var(--text-xs); color: var(--text-3); }
+  .part-exit {
+    margin: 10px 4px 8px;
+    font-size: var(--text-xs);
+    line-height: 1.6;
+    color: var(--text-2);
+  }
+  .part-exit span {
+    margin-right: 7px;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+  }
 
   .rung {
     display: grid;

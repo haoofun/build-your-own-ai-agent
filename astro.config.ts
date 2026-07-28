@@ -11,32 +11,36 @@ import {
   transformerTerminalPrompt,
 } from './src/data/shiki-transformers'
 
-// 章节计划——单一来源，供自定义布局、侧栏、llms.txt 生成使用
-// 文件不存在的章节由路由层跳过（写一章、上线一章，无需改配置）
+// 当前章节导航假设。Part 目标以 OUTLINE.md 为准；未冻结章节允许重切。
+// 文件不存在的章节由路由层跳过（写一章、上线一章，无需改配置）。
 export const CHAPTER_PLAN: Record<string, [file: string, label: string][]> = {
-  '第〇部分 · 起点': [
+  '序章 · 看见模型边界': [
     ['00-intro', '00 · 导言：把黑盒拆开'],
     ['01-first-api-call', '01 · 一次 API 调用'],
   ],
-  '第一部分 · 核心循环': [
+  '第一部分 · 核心闭环': [
     ['02-tool-use', '02 · Tool Use：给模型一双手'],
     ['03-agent-loop', '03 · Agent Loop：循环直到完成'],
     ['04-write-edit', '04 · 写与改：Write、Edit 与 diff'],
     ['05-bash', '05 · Bash：让 agent 跑命令'],
   ],
-  '第二部分 · 从玩具到可用': [
+  '第二部分 · 可控运行': [
     ['06-system-prompt', '06 · 系统提示词与环境感知'],
     ['07-permissions', '07 · 权限系统：信任但确认'],
+  ],
+  '第三部分 · 长任务与 Session': [
     ['08-token-awareness', '08 · token 感知：计数、截断与缓存'],
     ['09-compaction', '09 · 上下文压缩：compaction'],
     ['10-robustness', '10 · 健壮性与会话生命周期'],
   ],
-  '第三部分 · 进阶能力': [
+  '第四部分 · 计划与分工': [
     ['11-subagents', '11 · 子 agent：分而治之'],
     ['12-plan-commands-skills', '12 · 计划、命令与 Skills'],
+  ],
+  '第五部分 · 开放扩展': [
     ['13-mcp', '13 · MCP：接入外部世界'],
   ],
-  '第四部分 · 收尾': [
+  '第六部分 · 验证与交付': [
     ['14-terminal-ui', '14 · 终端体验打磨'],
     ['15-evals', '15 · 评测：怎么知道它变好了'],
     ['16-release', '16 · 发布'],

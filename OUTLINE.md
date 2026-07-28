@@ -1,6 +1,6 @@
 # Build Your Own AI Agent —— 从零复刻一个 Claude Code
 
-> 课程大纲 v0.1（初版草稿，待砍）
+> Part 目标 v0.3；章级目录为当前工作假设，待各 Part 开始前重切
 
 ## 一、定位
 
@@ -8,7 +8,7 @@
 
 **读者画像**：会写代码（任意语言，能看懂 TS）、调用过或听说过 LLM API、但从没拆开过 agent 黑盒的工程师。不要求机器学习背景。
 
-**最终成品**：一个几千行的 CLI 编码 agent，具备 Claude Code 的核心能力：agent loop、文件读写编辑、shell 执行、权限确认、上下文压缩、子 agent、MCP 接入。
+**最终成品**：一个几千行的 CLI 编码 agent，具备 Claude Code 的核心能力：agent loop、文件读写编辑、shell 执行、权限确认、上下文压缩、子 agent、MCP 接入。最终能力、实现边界和与成熟 agent 的差距以 `AGENT-ARCHITECTURE.md` 为准。
 
 ## 二、差异化
 
@@ -25,12 +25,29 @@
 - 每章结构固定：**为什么需要它 → 原理拆解 → 动手实现 → 跑起来看效果 → 练习与延伸**
 - 每章结束时项目**必须可运行**，且比上一章明显更强
 - 不引入 agent 框架（LangChain 等零依赖），第三方库仅限：官方 SDK 或 fetch 裸调 API、必要的终端渲染库
-- 代码全量展示 + 仓库按章打 tag（`chapter-01` … `chapter-16`），读者可任意检出对照
+- 代码全量展示 + 仓库按已冻结的可运行 checkpoint 打 `chapter-*` tag，读者可任意检出对照
 - 中文行文，技术名词保留英文原文
 
-## 四、章节大纲
+## 四、Part 目标与暂定章节展开
 
-### 第〇部分 · 起点
+本大纲采用 **Part-first** 规划：
+
+- `AGENT-ARCHITECTURE.md` 决定最终要造什么，本节只把终局拆成几个可独立验收的大阶段。
+- 每个 Part 先固定入口、出口、阶段验收和明确延后项；章数、章名和内容边界等该 Part 开始开发时再定。
+- 开始一个 Part 前，先粗跑通阶段终点，再按真实代码依赖、认知负担和可运行 checkpoint 反推章节。
+- 网站当前显示的 `00–16` 是导航和讨论用的展开假设，不是发布承诺。未冻结部分可以合并、拆分、改名；已发布章节的 slug 与 tag 保持稳定。
+- 下方旧章级条目只作为**素材池**临时放进最接近的 Part，不代表已经完成新一轮切章。旧 ch10、ch12 等横跨新 Part 的条目，进入对应 Part 开发时必须拆开重排。
+
+### 序章 · 看见模型边界
+
+序章负责建立共同起点，不算一个大型能力阶段。目标是让读者看清“模型调用不是 agent”，打通从终端输入到一次 HTTP 响应的最短路径。
+
+- **入口**：只有 TypeScript / Node 基础，还没有可运行项目。
+- **出口**：一个使用裸 fetch 的无状态聊天 CLI；读者能指出 HTTP 请求、message 和人机对话壳分别在哪里。
+- **阶段验收**：连续问“我叫什么”，亲眼看到第二轮失忆，并能解释模型无状态、客户端也尚未保存历史。
+- **明确延后**：跨轮 messages、tool use、agent loop、流式和 SDK 都不在本阶段解决。
+
+#### 当前章节假设（可调整）
 
 **00 导言：把黑盒拆开**
 为什么 agent 没有魔法；最终成品演示（GIF）；环境准备（Node 22+、API key、~$5 预算说明）。
@@ -39,7 +56,18 @@
 messages 与角色、system prompt；先打通一次干净的调用（request→response），再给它套一个**无状态对话循环**（读一句→发这一句→打印→再读）——尽早把"在终端里和 AI 对话"这个读者最熟悉的形象端上来，降低心智负担。这一版**刻意不带跨轮状态**：模型只就当前这句作答，当场暴露"大模型是无状态的、记不住上一句"，为 ch03"为什么要把全部历史 message 发回去"埋下引子。顺带点明**两个 loop 的边界**：外层是人机对话壳（本章）、内层才是 agent loop（ch03），全书讲的是内层。本章不做流式（挪到 ch14），终点是对话循环本身。
 → 里程碑：一个**会失忆**的聊天 CLI——连问"我叫什么"都答不出，亲手制造 ch03 要解的悬念。
 
-### 第一部分 · 核心循环（agent 的本质）
+### 第一部分 · 核心闭环（从 fetch 到 SDK）
+
+**阶段目标**：从序章的裸 HTTP 调用出发，亲手完成“模型调用工具 → 工具改变环境 → 结果回给模型 → 模型继续行动”的最小 coding agent，并在理解协议之后切到官方 SDK。
+
+- **入口**：一个会失忆、只能输出文本的 fetch 聊天 CLI。
+- **出口**：一个能 Read / Write / Edit / Bash、能自己把失败测试修到通过的 SDK 版 agent；核心 `runAgent` 可复用，模型调用和本地执行有清楚边界。
+- **阶段验收**：给定带失败测试的 fixture，agent 能读代码、修改文件、执行测试、根据失败继续修复，最终通过；fetch 与 SDK 版本对同一 transcript 行为等价。
+- **必须讲清**：fetch 阶段手写的 wire types 到底有多复杂、它们如何暴露协议本质，以及何时开始只剩重复维护、足以支付切换 SDK 的成本。
+- **类型成本实测**：spike 的 `types.ts` 是 58 行、10 个导出类型——足够教协议，但还没有复杂到单凭行数就必须切 SDK。真正的切换点是下一阶段即将加入流式、cache usage、更多响应分支和版本演进，继续手写的边际成本开始压过教学收益。
+- **明确延后**：环境注入、权限、长上下文、持久化和子 agent；不为后续功能预留空回调或最终目录。
+
+#### 当前章节假设（可调整）
 
 **02 Tool Use：给模型一双手**
 工具即 JSON Schema 声明；tool call 的请求-响应协议；为什么说"模型只是输出了一段 JSON"。
@@ -58,37 +86,68 @@ loop 的终止条件；messages 数组的增长方式；实现 `read_file` 工�
 → 里程碑：丢给它一个失败的测试，它自己修到通过。
 
 **fetch 毕业 · loop 重构**（本部分收尾）
-用 SDK 跑同一个 agent，证等价（API 就是 HTTP POST、tool_use 就是一段 JSON、loop 就是重发数组——到此你全都亲手摸过了）。趁切换之际做一次**关键重构**：把 loop 从"while 循环里什么都干"拆成**纯函数 loop + config 回调注入**（functional core / imperative shell）。动机：第二部分要往 loop 上挂权限（ch07）、compaction（ch09）等策略，如果继续往里塞 if 分支会腐烂得很快；回调注入让 loop 只管机制（调模型、跑工具、发事件），策略全从外部插入。这个重构也是 ch11 子 agent 能一行不改复用 loop 的前提。
-→ 里程碑：SDK 版 agent 行为与 fetch 版完全等价；loop 变成纯函数，接受 config 对象（含 `beforeToolCall`、`transformContext` 等回调槽位，此时全为空实现），第二部分逐个填实。
+用 SDK 跑同一个 agent，证等价（API 就是 HTTP POST、tool_use 就是一段 JSON、loop 就是重发数组——到此你全都亲手摸过了）。趁切换之际做一次**关键重构**：把 loop 从"while 循环里什么都干"拆成稳定的机制边界（functional core / imperative shell）。动机：后续 Part 会逐步加入权限、compaction 等策略，如果继续往 loop 里塞分支会快速腐烂。此时只抽出当前实现已经需要的 `callModel`、Tool 和 `ExecutionEnv` 边界；策略入口等真正遇到问题时再长出来，不预留空回调。
+→ 里程碑：SDK 版 agent 行为与 fetch 版完全等价；`runAgent` 不持有跨 run 状态，模型调用与工具执行可替换、可测试，并且没有只为未来存在的抽象。
 
-### 第二部分 · 从玩具到可用
+### 第二部分 · 可控运行
+
+**阶段目标**：把“能力上能做事”的最小 agent，变成一个知道自己在哪里、过程可见、危险操作受控、发生故障时可以安全停止的 runtime。
+
+- **入口**：第一部分的 SDK agent 能修改代码、运行命令，但不认识项目、没有权限边界，运行过程不透明，错误或取消可能直接打断整个程序。
+- **出口**：agent 能读取 cwd、Git 状态和项目指令；通过最小流式事件报告过程；写入和命令执行前请求确认；工具错误回到模型；网络瞬时错误有限重试；Ctrl+C 能贯穿模型、工具和子进程。
+- **阶段验收**：同一个 fixture 中，agent 遵守项目指令，写入前询问，工具失败后自行修正，模拟 429 后继续；长命令中 Ctrl+C 不留下孤儿进程，当前对话仍可继续。
+- **必须守住**：权限不是 sandbox；参数校验先于询问；流中断后不透明重试；tool error 要回到模型；同一个 AbortSignal 贯穿完整调用链。
+- **明确延后**：token 预算、compaction、跨 prompt 保存，以及 Todo、子 agent、Skills 和 MCP。
+
+#### 当前章节假设（可调整）
 
 **06 系统提示词与环境感知**
-system prompt 的分层设计；注入 cwd、git 状态、目录结构；CLAUDE.md 式的项目记忆文件。权限和 compaction 等策略将在后续章节逐个填入 ch05 重构留下的 config 回调槽位——本章先实现第一个：把环境信息注入 system prompt 的 `buildSystemPrompt` 回调。
+system prompt 的分层设计；注入 cwd、git 状态、目录结构；CLAUDE.md 式的项目记忆文件。本章新增一个普通的 `buildSystemPrompt` 函数，由 CLI 在每次 prompt 前调用并把结果传给 `runAgent`；不为权限和 compaction 预留接口。
 → 里程碑：同一问题前后对比——注入环境前 agent 答不出"当前分支有什么未提交改动"，注入后答对，且遵守 CLAUDE.md 里的项目约定。
 
 **07 权限系统：信任但确认**
-危险操作分级；写操作/命令执行的用户确认交互；白名单与会话内记忆（"本次会话总是允许"）。实现方式：填入 `beforeToolCall` 回调——loop 不含权限逻辑，策略全从外部注入。
+危险操作分级；写操作/命令执行的用户确认交互；白名单与会话内记忆（"本次会话总是允许"）。参数校验后，工具派发路径调用本章才加入的权限函数；询问发生在 CLI，loop 不按工具名硬编码策略。
 → 里程碑：agent 不再能悄悄 `rm -rf`。
+
+### 第三部分 · 长任务与 Session
+
+**阶段目标**：让 agent 从“能稳定完成一次 run”进化为“能处理不断增长的上下文，并在多次 prompt 和进程重启之间延续工作”。
+
+- **入口**：第二部分已经可控，但 messages、代码和工具结果会随长任务持续增长；关闭进程后，全部会话状态消失。
+- **出口**：runtime 能观测 token 与成本、截断超大工具结果、验证 prompt cache、在安全边界上执行 compaction，并用 append-only JSONL 保存和恢复线性 `SessionState`。
+- **阶段验收**：长任务在低阈值下触发压缩后仍保留原始任务和关键证据；cache usage 可见；关闭终端再打开能够恢复历史，损坏尾行不会破坏整个 Session。
+- **必须守住**：usage 是账本而非上下文真值；压缩切点不能破坏 tool 配对；原始任务不进入有损 summary；压缩后必须低于触发线；只保存已经 settle 的完整消息。
+- **明确延后**：Todo、Skills、子 agent、MCP，以及 Session tree、事务恢复和 run 中途崩溃续跑。
+
+#### 当前章节假设（可调整）
 
 **08 token 感知：计数、截断与缓存**
 token 计数与预算（count_tokens / usage 锚定）；大输出截断策略（工具返回 10 万行 stdout 怎么办）；prompt caching（`cache_control` 断点放 system 末尾，把 cache 命中纳入账单观测）。本章只解决"**看见**窗口在哪、还剩多少、账单怎么降"，不压历史——压历史是下一章的事。
 → 里程碑：API 账单下降（caching 省重发，usage 看得见）；大输出不再把窗口撑爆。
 
 **09 上下文压缩：compaction**
-**手写**客户端压缩，全书最重的一章。何时压（锚定 provider 真实 usage + `reserveTokens` / `keepRecentTokens` 双参数解耦地板与触发线，防 thrash）；怎么压（另起一次**不带 tools** 的总结调用）；切点怎么选（在枚举阶段**结构性排除 toolResult**——根本不把非法位置放进候选集，而不是切完再校验，直接防 tool_use/tool_result 配对断裂导致 400）；结构化保留硬事实（碰过的文件、原始任务等关键信息不交给有损 summary，而是以 `CompactionDetails` 显式留存——直接治"子 agent 把搜索结果摘没"的坑）。官方服务端 compaction（`compact-2026-01-12`）可作参照，但**不支持教学模型 Haiku 4.5**，故只能手写。实现方式：填入 `transformContext` 回调。prompt caching 与 compaction 的咬合（压缩改前缀时 system 缓存不失效）在本章收尾。
+**手写**客户端压缩，全书最重的一章。何时压（锚定 provider 真实 usage + `reserveTokens` / `keepRecentTokens` 双参数解耦地板与触发线，防 thrash）；怎么压（另起一次**不带 tools** 的总结调用）；切点怎么选（在枚举阶段**结构性排除 toolResult**——根本不把非法位置放进候选集，而不是切完再校验，直接防 tool_use/tool_result 配对断裂导致 400）；结构化保留硬事实（碰过的文件、原始任务等关键信息不交给有损 summary，而是以 `CompactionDetails` 显式留存——直接治"子 agent 把搜索结果摘没"的坑）。官方服务端 compaction（`compact-2026-01-12`）可作参照，但**不支持教学模型 Haiku 4.5**，故只能手写。`runAgent` 在每次模型请求前调用本章新增的普通压缩函数；prompt caching 与 compaction 的咬合（压缩改前缀时 system 缓存不失效）在本章收尾。
 → 里程碑：长对话不再爆窗口；demo 调低阈值触发压缩，观察压缩前后 usage 变化。
 
 **10 健壮性与会话生命周期**
 三层健壮性：(1) **网络层**——限速与指数退避重试、流中断恢复；(2) **工具层**——错误编码进 tool_result 返回而非抛异常穿透 loop（prepare → execute → finalize 三段式，每段失败都是正常结果流回去，loop 永不被工具异常打断）；(3) **会话层**——session 持久化（append-only JSONL 追加，关掉终端重开、上次对话还在）与 Ctrl+C 优雅取消。
 → 里程碑：故障注入开关三连演示——模拟 429 自动退避续上；长命令中 Ctrl+C 优雅取消后还能继续对话；工具报错回传、模型自我修正；关掉终端再打开，对话历史完整恢复。
 
-### 第三部分 · 进阶能力
+### 第四部分 · 计划与分工
+
+**阶段目标**：让 agent 从“所有工作都塞进一个上下文”进化为“能显式规划多步任务，并把调查工作交给隔离的只读子 agent”。
+
+- **入口**：第三部分的线性 Session 可以跑很久，但多步任务容易漏步骤，搜索类工作仍会把大量中间证据塞进主上下文。
+- **出口**：Todo 作为普通 Tool 持久化任务进度；Task Tool 复用同一个 `runAgent`，使用全新 messages 和只读 Tool Map；子 agent 的 usage、取消与证据完整回到父 run。
+- **阶段验收**：同一个多步仓库任务开关 Todo 做对比；主 agent 派 explorer 全库调查，收到带文件路径、行号或命令输出的证据，同时主上下文保持清晰。
+- **必须守住**：Todo 不用模块级全局；子 agent 深度固定一层；只读边界由工具集合保证；自然语言结论不算证据；子 agent 消耗必须全额上卷。
+- **明确延后**：Skills、MCP、写操作子 agent、worktree 合并、并行调度和后台任务。
+
+#### 当前章节假设（可调整）
 
 **11 子 agent：分而治之**
-为什么需要隔离上下文（搜索类任务污染主对话）；Task 工具的实现：子 agent 的生命周期、结果回传。只读工具集（`createReadOnlyTools`）作为子 agent 权限的结构性解法——"权限最优解有时是限制工具集，不是检查每次调用"。验证 ch05 的 loop 重构收益：子 agent 一行不改复用 `runAgent`。**两层隔离**：消息数组隔离上下文（explorer 只读子 agent），git worktree 隔离文件系统（写操作子 agent）——`git worktree add` 出临时目录、子 agent 的 cwd 指过去、结束后 diff 审查再 merge 或丢弃，核心实现 ~30 行，但把 agent 隔离从"不污染对话"升级到"不碰用户工作区"。
-→ 里程碑 A：主 agent 派出只读子 agent 全库搜索，自己保持清爽。
-→ 里程碑 B（练习与延伸）：派子 agent 去 worktree 里重构一个模块，审查 diff 后 merge 回来。
+为什么需要隔离上下文（搜索类任务污染主对话）；Task 工具的实现：子 agent 的生命周期、结果回传。只读工具集（`createReadOnlyTools`）作为子 agent 权限的结构性解法——"权限最优解有时是限制工具集，不是检查每次调用"。验证第一部分 loop 重构收益：子 agent 一行不改复用 `runAgent`。正文只实现消息数组隔离的 explorer，并要求返回可复查证据；写操作子 agent 与 git worktree 隔离留给番外。
+→ 里程碑：主 agent 派出只读子 agent 全库搜索，自己保持清爽，并能核对它返回的文件与行号证据。
 
 **12 计划、命令与 Skills**
 三件事共享一个主题——**扩展 agent 的行为，不碰核心 loop**。(1) TodoWrite 式工具：为什么"让模型自己列任务清单"能显著提升长任务表现；(2) 斜杠命令：`/help`、`/compact` 等元操作；(3) skill 文件的按需加载——本质是"把 prompt 工程产品化"。
@@ -96,11 +155,35 @@ token 计数与预算（count_tokens / usage 锚定）；大输出截断策略�
 → 里程碑 B：实现一个 `/commit` skill；用 token 计数证明不触发时它不在 prompt 里——按需加载眼见为实。
 → 练习与延伸：把本书的导师 skill 装进你的 Claude Code（指向 skill 页）——书教 skills，书本身就是 skill。
 
+> 旧 ch12 同时横跨“计划与分工”和“开放扩展”。它只是待拆素材：Todo 属于本 Part，Skills 属于下一 Part；`/compact`、`/resume` 等命令应在产生需求时出现，不再集中包装成一项大能力。
+
+### 第五部分 · 开放扩展
+
+**阶段目标**：让 agent 在不修改核心 loop 的前提下，沿“行为文本”和“外部工具”两条轴增加能力。
+
+- **入口**：第四部分已经会规划和委托，但可用行为写死在 system prompt，可用工具也只来自本地代码。
+- **出口**：Skills 按需进入 `SessionState` 和下一次 system prompt；stdio MCP server 的工具经过命名、权限和错误适配后进入同一个 Tool Map；`runAgent` 不区分本地、Task 或 MCP 工具。
+- **阶段验收**：加载一个 skill 前后用 token 证明按需生效；接入真实 MCP server 完成握手、分页和调用；server 启动失败时降级继续，CLI 退出后没有残留进程。
+- **必须守住**：未加载 Skill 不占 token；MCP 服从同一权限、错误与取消协议；工具名冲突在注册时失败；扩展能力不引入 Manager 或第二套 runtime。
+- **明确延后**：通用插件框架、多 Provider、MCP 自动重连、热更新、动态下架和企业级模型治理。
+
+#### 当前章节假设（可调整）
+
 **13 MCP：接入外部世界**
 MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，接入一个现成 server（如文件系统/GitHub）。
 → 里程碑：你的 agent 能用上整个 MCP 生态。
 
-### 第四部分 · 收尾
+### 第六部分 · 验证与交付
+
+**阶段目标**：把功能完整但仍偏开发者自用的 CLI，变成体验可展示、能力可量化、边界不吹嘘、别人能安装复现的开源作品。
+
+- **入口**：目标能力已经齐全，但终端输出粗糙，改进效果主要靠主观感受，安装路径也未经外部环境验证。
+- **出口**：终端体验完整，有固定任务集和确定性报告，README 的能力证据矩阵区分 Implemented / Spiked / Designed / Aware，并能在干净环境三分钟安装跑通。
+- **阶段验收**：同一任务生成前后对比 GIF；eval 输出通过率、token 与成本；发布 CI 在干净环境完成全局安装和 demo。
+- **必须讲清**：教学 agent 与成熟 agent 在 sandbox、durable session、多 agent 调度、MCP 生命周期和 observability 上还差什么，以及为什么正文止步于此。
+- **明确延后**：生产级 harness、IDE / Web、多用户与企业治理；不为“看起来完整”把这些伪装成已实现能力。
+
+#### 当前章节假设（可调整）
 
 **14 终端体验打磨**
 不依赖重型 TUI 框架的渲染：spinner、工具调用的折叠展示、流式 markdown 渲染（不闪烁不错位）。**流式传输本身不在本章教**——它已在第二部分开头（fetch 毕业、转 SDK 单轨后的首个版本）用 SDK helper 引入；本章只解决"拿到流之后怎么把终端体验做漂亮"。裸 SSE 手解析（不用 helper、自己按帧解析 text/event-stream）作为本章「练习与延伸」，给想看清"SDK 背后是什么"的读者动手复刻。
@@ -124,9 +207,9 @@ MCP 协议拆解（不是黑魔法，就是 JSON-RPC）；实现 MCP client，�
 
 - TypeScript + Node 22+，ESM
 - API：默认 Anthropic Messages API，附录给 OpenRouter/兼容端点方案
-- **正文 fetch/SDK 策略（2026-06-21 定）**：双轨到第一部分末——ch01–03 用裸 fetch 讲协议（API 就是 HTTP POST、tool_use 就是一段 JSON、loop 就是重发数组），ch04–05 滑行；第一部分末「fetch 毕业」用 SDK 跑同一 agent 证等价，第二部分起 SDK 单轨（了结两份 loop 维护税）。流式在 fetch 毕业后首个 SDK 版引入；附录 A/B 吃前段 fetch 红利
+- **正文 fetch/SDK 策略（2026-06-21 定）**：序章与第一部分前段用裸 fetch 讲协议（API 就是 HTTP POST、tool_use 就是一段 JSON、loop 就是重发数组）；第一部分结束前「fetch 毕业」，用 SDK 跑同一 agent 证等价，第二部分起 SDK 单轨（了结两份 loop 维护税）。流式在 fetch 毕业后的首个 SDK checkpoint 引入；附录 A/B 吃前段 fetch 红利
 - 零 agent 框架；终端渲染尽量手写（教学价值）
-- 仓库结构：`src/content/docs/`（章节 markdown/mdx）+ `src/components/`（交互孤岛 React 组件）+ `code/`（按章 tag 的实现）
+- 仓库结构：`src/content/docs/`（章节 markdown/mdx）+ `src/components/`（交互孤岛 React 组件）+ `code/`（按冻结 checkpoint 打 tag 的实现）
 
 ## 六、发布管线（单源三端）
 
@@ -140,7 +223,7 @@ src/content/docs/*.mdx ──→ Astro（自定义布局）──→ 网站（�
 
 约定：markdown 为主，交互动画为孤岛（MDX + React 组件 + 静态降级内容，全书控制在关键处）；网站部署 Cloudflare Pages；电子书延后生产，写作期 `.md` 文件保持 pandoc 兼容，`.mdx` 文件后续统一补预处理。
 
-**agent 可读（第四端）**：站点内置生成 llms.txt / llms-full.txt，读者可直接把链接丢给自己的 AI agent；M4 随 1.0 上线 **skill 页**——提供 SKILL.md（Claude Code）与 AGENTS.md 引导（Codex 等），让读者用自己的 agent 当导师学完本书。导师 prompt 苏格拉底式：讲原理、查作业、不代写（导师铁律的产品化，呼应 ch12「书教 skills，书即 skill」）。
+**agent 可读（第四端）**：站点内置生成 llms.txt / llms-full.txt，读者可直接把链接丢给自己的 AI agent；M6 随 1.0 上线 **skill 页**——提供 SKILL.md（Claude Code）与 AGENTS.md 引导（Codex 等），让读者用自己的 agent 当导师学完本书。导师 prompt 苏格拉底式：讲原理、查作业、不代写（导师铁律的产品化，呼应第五部分“书教 Skills，书本身也是 Skill”）。
 
 ## 七、指标（双层）
 
@@ -153,8 +236,10 @@ src/content/docs/*.mdx ──→ Astro（自定义布局）──→ 网站（�
 | 阶段 | 内容 | 备注 |
 |---|---|---|
 | M0 | spike 周（2026-06-10 起，一周） | 作者粗跑核心能力链，AI 并行搭发布管线；产出坑清单，代码留 `spike` 分支（见 CLAUDE.md"协作工作流"） |
-| M1 | 第 0–5 章（含 fetch 毕业 + loop 重构） | 进入逐章循环；管线已就绪，写完即发，最小可发布单元试水 |
-| M2 | 第 6–10 章 | 此时已超过 CodeCrafters 深度（ch08–09 拆分后多一章，ch10 含 session 持久化） |
-| M3 | 第 11–13 章 | 差异化核心（ch12 合并 todo+skills）；若 spike 周未跑通 MCP，进 M3 前补 spike |
-| M4 | 第 14–16 章 + 全书校对 | 发布 1.0；电子书实际生产；上线 skill 页（SKILL.md / AGENTS.md，苏格拉底式导师 prompt） |
-| M5 | 英文翻译版 | 提 build-your-own-x PR |
+| M1 | 序章 + 第一部分：模型边界与核心闭环 | 完成 fetch → SDK、最小 coding agent 与 loop 边界；章节数在 Part 开始时冻结 |
+| M2 | 第二部分：可控运行 | 完成环境、流式事件、权限、错误、重试与 Abort |
+| M3 | 第三部分：长任务与 Session | 完成 token、caching、compaction 与 JSONL Session |
+| M4 | 第四部分：计划与分工 | 完成 Todo 与带证据的只读子 agent |
+| M5 | 第五部分：开放扩展 | 完成按需 Skills 与 MCP；进入前补齐所需 mini-spike |
+| M6 | 第六部分：验证与交付 + 全书校对 | 发布 1.0；电子书实际生产；上线 tutor skill |
+| M7 | 英文翻译版 | 提 build-your-own-x PR |

@@ -9,16 +9,16 @@ const stages = ['为什么需要它', '原理拆解', '动手实现', '跑起来
 
 <BaseLayout
   title="课程大纲 — Build Your Own AI Agent"
-  description="16 章 + 3 附录的完整大纲与写作进度：从一次 API 调用到一个约 2500 行的编码 agent"
+  description="从一次 API 调用到完整 coding agent：按 Part 规划的能力路线与当前章节假设"
 >
   <SiteHeader />
 
   <main class="outline-main" id="main-content">
     <div class="outline-inner">
-      <div class="outline-eyebrow">// 课程大纲 · 16 章 + 3 附录</div>
-      <h1 class="outline-title">从一次 API 调用，到一个 ~2500 行的编码 agent</h1>
+      <div class="outline-eyebrow">// Part 目标 v0.3 · 章节展开持续修订</div>
+      <h1 class="outline-title">从一次 API 调用，到一个几千行的编码 agent</h1>
       <p class="outline-lead">
-        完整章节地图与写作进度。每章固定五段式，结束项目必须可运行、且比上一章明显更强，代码按章打 git&nbsp;tag。
+        Part 按真实任务需求划分：新能力带来新的工程压力，runtime 再承担新的责任。每个 Part 先固定出口，再从真实代码 checkpoint 反推章节。
       </p>
 
       <div class="outline-contract">
@@ -31,10 +31,10 @@ const stages = ['为什么需要它', '原理拆解', '动手实现', '跑起来
       </div>
 
       <div class="outline-status">
-        <span class="status-note">全书写作中：spike 周已跑通核心能力链，正在写第 0–5 章。下方状态会随章节上线更新。</span>
+        <span class="status-note">全书写作中：目前推进序章与第一部分。旧 00–16 条目只按最接近的 Part 临时归类；旧 ch10、ch12 横跨新边界，进入对应 Part 时再重切。</span>
         <div class="status-legend">
           <span class="legend-item"><span class="dot dot-writing"></span>写作中</span>
-          <span class="legend-item"><span class="dot dot-planned"></span>规划中</span>
+          <span class="legend-item"><span class="dot dot-planned"></span>暂定</span>
           <span class="legend-item"><span class="dot dot-published"></span>可读</span>
         </div>
       </div>
@@ -47,6 +47,28 @@ const stages = ['为什么需要它', '原理拆解', '动手实现', '跑起来
               <h2 class="outline-part-title">{part.title}</h2>
               {part.sub && <span class="outline-part-sub">{part.sub}</span>}
             </div>
+
+            {part.goal && (
+              <div class="outline-part-contract">
+                <p class="part-goal">{part.goal}</p>
+                <dl>
+                  <div>
+                    <dt>Part 出口</dt>
+                    <dd>{part.exit}</dd>
+                  </div>
+                  <div>
+                    <dt>阶段验收</dt>
+                    <dd>{part.acceptance}</dd>
+                  </div>
+                  <div>
+                    <dt>明确延后</dt>
+                    <dd>{part.deferred}</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
+
+            {part.goal && <div class="chapter-hypothesis">// 当前章节素材 · 开发本 Part 前重切并冻结</div>}
 
             {part.chapters.map((ch) => {
               const slug = N_TO_SLUG[ch.n]
@@ -203,6 +225,47 @@ const stages = ['为什么需要它', '原理拆解', '动手实现', '跑起来
   }
   .outline-part-sub { font-size: var(--text-sm); color: var(--text-3); }
 
+  .outline-part-contract {
+    margin: 14px 0 12px;
+    padding: 16px 18px;
+    border-left: 2px solid var(--border-strong);
+    background: var(--bg-alt);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+  .part-goal {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.7;
+    color: var(--text-1);
+  }
+  .outline-part-contract dl {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0 0;
+  }
+  .outline-part-contract dl > div {
+    display: grid;
+    grid-template-columns: 70px 1fr;
+    gap: 10px;
+  }
+  .outline-part-contract dt {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+  }
+  .outline-part-contract dd {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 1.65;
+    color: var(--text-2);
+  }
+  .chapter-hypothesis {
+    margin: 16px 8px 4px;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+  }
+
   /* ── chapter row ───────────────────────────────────────────── */
   .outline-chapter {
     display: grid;
@@ -271,6 +334,7 @@ const stages = ['为什么需要它', '原理拆解', '动手实现', '跑起来
   }
 
   @media (max-width: 560px) {
+    .outline-part-contract dl > div { grid-template-columns: 1fr; gap: 2px; }
     .outline-chapter-head { flex-direction: column; gap: 4px; }
     .outline-chapter-status { transform: none; }
   }

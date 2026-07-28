@@ -18,10 +18,10 @@
 
 ## 关键约定（评审/写作时必须遵守）
 
-1. **每章结构固定**：为什么需要它 → 原理拆解 → 动手实现 → 跑起来看效果 → 练习与延伸
-2. **每章结束项目必须可运行**，且比上一章明显更强（BYOX 风格的灵魂）
+1. **每章结构固定**：为什么需要它 → 原理拆解 → 动手实现 → 跑起来看效果 → 练习与延伸；本条从该章所在 Part 完成切章并冻结后生效
+2. **每个已冻结章节结束时项目必须可运行**，且比上一章明显更强（BYOX 风格的灵魂）
 3. **零 agent 框架**：禁止 LangChain 等；仅允许官方 SDK 或裸 fetch、必要的终端渲染库
-4. 代码按章打 git tag（chapter-01 … chapter-16）
+4. 代码按已冻结的可运行 checkpoint 打 `chapter-*` git tag；当前网站上的 `00–16` 仅是工作编号，不构成最终章数承诺
 5. 中文行文，技术名词保留英文（如 tool use、compaction，不强行翻译）
 6. 默认 Anthropic Messages API；附录 A 提供 OpenAI 兼容端点方案
 7. **单源边界**：`src/content/docs/` 是内容单源，喂三端（Astro 站 / pandoc 电子书 / llms.txt）。网站和 github 仓库是一等公民，电子书最后做。
@@ -29,11 +29,11 @@
 ## 仓库规划结构
 
 ```
-OUTLINE.md           # 课程大纲
+OUTLINE.md           # Part 目标、退出验收与暂定章节展开
 CLAUDE.md            # 本文件
 WRITING.md           # 写作规范（pandoc 兼容约定，评审章节时对照）
 README.md            # 临时版（含 Cloudflare Pages 部署参数），ch16 重写
-astro.config.ts      # 站点配置（Astro + React，导出 CHAPTER_PLAN，写一章上线一章）
+astro.config.ts      # 站点配置（Astro + React，CHAPTER_PLAN 为当前暂定导航）
 src/
   content/docs/      # 章节 .md / .mdx（唯一内容源 → 网站 / 电子书 / llms.txt）
   pages/             # 首页、404 等（纯网站地盘，React 组件放开用）
@@ -69,18 +69,31 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 
 **决策记录（2026-07-25，全文搜索方案：弃用预定的 Pagefind，改用 Fuse.js 自建索引）**：2026-06-22 决策记录把 Pagefind 列为搜索待建项的默认候选；实际调研后发现其中文分词索引有已知未解问题（Pagefind issue #987：CJK 无词边界，跨字子串查询漏召回，官方长期 open 无修复），恰好撞上本书"中文为主"的核心场景。对比过 Meilisearch（需自建常驻服务，运维负担与"求曝光的作品集、零 agent 框架"气质不符）和 Algolia DocSearch（第三方托管 + 爬虫抓取有更新延迟 + 需申请审批，与"字体都自托管"的既有取舍矛盾）后改定：**Fuse.js + 构建期自产索引**——`src/pages/search-index.json.ts` 构建期从 `src/content/docs/` 抽取纯文本（去 import/JSX/标题符号，drafts 排除规则与阅读路由一致），`src/components/Search.tsx` 的 ⌘K 面板首次打开时懒加载该索引，用 Fuse 的 Bitap 子串/模糊匹配（`ignoreLocation:true`）而非分词倒排索引。选择依据：全书体量是书稿量级，非海量文档站，Fuse 直接对字符串做近似子串匹配、不依赖分词，天然绕开中文分词问题，且零服务器、零第三方运行时依赖；索引管道与正文完成度解耦，随"写一章、上线一章"节奏自动跟上，不必等正文写完再做。实测跨字中文子串查询（如"终端里聊天的"）精确命中，验证有效。
 
-## 当前状态（2026-06）
+**决策记录（2026-07-28，规划单位从 Chapter 提升为 Part）**：`AGENT-ARCHITECTURE.md` 已足够成熟，今后把它作为**最终能力与实现边界的基线**；`OUTLINE.md` 负责定义每个 Part 的入口、出口、阶段验收和明确延后项；网站上的章号、章名和拆分只是把 Part 展开成页面的**当前工作假设**，不是交付合同。采用**渐进冻结**：开始一个 Part 前，先按目标架构粗跑通该 Part 的终点并补必要 mini-spike，再从真实代码增量和教学悬念反推可运行 checkpoint，最后冻结该 Part 的章节；尚未进入的 Part 可以自由合并、拆分、改名或调整章数。已发布章节的正文、slug 与 git tag 视为稳定接口；确需改动时保留重定向和迁移说明。由此，2026-06-30 的 16 章方案保留为历史决策和当前导航参考，不再具有章级约束力。
 
-- [x] 定位、差异化调研、大纲 v0.1（见 OUTLINE.md，16 章 + 3 附录）
+**第一部分类型成本核对（2026-07-28）**：spike 的 `types.ts` 实际为 58 行、10 个导出类型，已经足够让读者亲手看见 request / response、`tool_use` / `tool_result` 和 discriminated union，但**仅凭这 58 行还不足以把 SDK 切换包装成“类型复杂到写不下去”**。切换理由应是边际维护成本即将陡增：后续部分会加入流式事件、cache usage、更多 stop reason、beta 字段和 SDK 版本兼容；继续手写会从“理解协议”变成“追着 provider 维护一份不完整 SDK”。正文应展示这个转折，不夸大第一版类型本身的痛苦。
+
+**决策记录（2026-07-29，按能力演进重切 Part）**：2026-07-28 只完成了规划单位升级，仍基本沿用旧 Part 边界；本次回到 `AGENT-ARCHITECTURE.md` 的独立能力地图（单用户 CLI、线性 Session、本地工具 + MCP、只读子 agent、权限 + Abort、上下文管理、eval），按“真实需求 → 新能力 → 工程压力 → runtime 责任 → 阶段出口”重新推导为：**序章 · 看见模型边界 → Part 1 核心闭环 → Part 2 可控运行 → Part 3 长任务与 Session → Part 4 计划与分工 → Part 5 开放扩展 → Part 6 验证与交付**。旧“可信运行”拆开，是因为安全可控的一次 run 与跨 prompt 的长任务是两次独立跃迁；旧“扩展而不改内核”拆开，是因为 Todo / 子 agent 扩展任务规模，Skills / MCP 扩展能力边界。Commands 不再作为集中能力：`/compact`、`/resume`、`/skill` 等在真实需求出现时分别加入。架构文档的三档图只是能力快照，放在 Part 1、3、5 结束处，不负责反向决定 Part 数量。
+
+规划权威从高到低：
+
+1. `AGENT-ARCHITECTURE.md`：最终要造什么、核心不变量和哪些生产能力明确不做。
+2. `OUTLINE.md`：每个 Part 为什么存在、结束时读者能做什么、如何验收。
+3. 网站目录 / `src/data/chapters.ts` / `astro.config.ts`：当前章节展开和导航；未冻结部分允许变化。
+4. 章节草稿：只约束已经进入写作和验证的 checkpoint。
+
+## 当前状态（2026-07）
+
+- [x] 定位、差异化调研、大纲 v0.1（历史版：16 章 + 3 附录）
 - [x] 大纲评审（2026-06-10：差异化表新增 Windy 行、7 章补齐里程碑、定位改为深度优势）
 - [x] spike 周（实际 D1 = 2026-06-11，较原计划顺延一天；坑清单见 SPIKE-NOTES.md）。D1 ✓；D2 ✓（06-13 收口：SDK 版 + fetch 版双版验收通过，victim bug 全绿，abort 实证无孤儿进程，tsc 全绿；types.ts 手写类型、agent-fetch.ts 移植、cli.ts 入口拆分、AgentStopReason 出口语义均完成）；D3 ✓（06-13：环境注入 4 行 + 行为指引、权限 onToolCall 回调 + read 免审、拒绝测试验证 is_error 回传与 max_turns 兜底；模型不理解拒绝语义的坑留给 ch07 正文）；D4 ✓（06-16：compaction SDK 版跑通，findCompactCutIndex + assertValidMessages 守住边界配对、多次压缩零 400，总结调用不传 tools 绕开 content:null；暴露阈值 thrash——真 summary 把压缩后地板顶过阈值致每轮重压、反而烧钱，spike 调阈值 3072 解；needle 端到端实测非确定（F/G 同代码一错一对，run F 把原始问题压丢、反问用户"主要问题是什么"）、实证锚点缺失；fetch 版 compaction 不写、计入 D7 账；ch08 倾向拆分。详见 SPIKE-NOTES D4 收口）；D5 ✓（06-19：子 agent + todo；解耦 `runTool` 经 `opts` 注入 → 纯 DAG 杀循环依赖，`runAgent` 一行不改被 explorer 复用，D2 判据成立；explorer = 只读子 agent（read_file+grep，补 grep 还 D3 坑2）、不传 onToolCall 靠只读工具集结构性免审、深度锁 1、signal 穿透、maxTurns=6 自有预算；补 TodoWrite；e2e 实证主上下文隔离（子 26639 token 塌成一条 tool_result），但隔离结构成功、任务失败——子 loop 复用 compaction 把搜索结果摘没、explorer 自信答错且父无从校验（→ ch10 子 agent 结果需验 + ch15 eval）；坑：usage 数值漏（父报 2603、子烧 26639）、todo 模块全局被动安全、可观测混流、grep 无 node_modules 排除；fetch 版不写计 D7 账。详见 SPIKE-NOTES D5）；D6 ✓（06-21：手写 stdio MCP client 跑通——逐行 JSON-RPC、initialize/initialized 握手、tools/list 翻页（seenCursors 防循环）、tools/call、stop 三段 kill（close stdin→SIGTERM→SIGKILL）+ 幂等 + abort 穿透；cli 并表用 `mcp__<别名>__<tool>` 前缀 + sanitize 非法字符 + >64 throw + 冲突 throw；真实对接 `@playwright/mcp`；远程工具走 onToolCall 审批是结构性免费拿到的；坑：MCP 启动 `await` 在 main 最前、连不上会拖垮整个 agent 无降级、initialize 无超时（npx 首拉慢易挂）、isError 在 cli handler 被 throw → 经 loop catch 转 is_error（精心写的两层错误区分被压平一层）、失联 server 工具不下架（spike 跳过）；MCP 章（OUTLINE ch12）定为「先手写 client、再展示 SDK 简化版」；hands-on 口述坑 + e2e 对抗实证待补；fetch 版不写计 D7 账。详见 SPIKE-NOTES D6）；D7 ✓（06-21：全周坑清单复盘成 8 条横切主题（各章「为什么需要它」脊柱）；fetch-vs-SDK + 流式正文策略提前拍板，见上「决策记录（2026-06-21）」；**spike 收官**——核心能力链六天全通，SDK 全绿、fetch 至 D3 跟齐。详见 SPIKE-NOTES D7）
 - [x] 发布管线 v1（2026-06-11：VitePress + llms.txt + pandoc epub + CI + Cloudflare Pages 上线）
 - [x] 发布管线 v2（2026-06-22：迁移至 Astro + Starlight + React，见「决策记录（2026-06-22，技术栈迁移）」）
 - [x] 发布管线 v3（2026-06-22：移除 Starlight，改为纯 Astro + React + Claude Design System；待建：自定义布局 + 内容路由）
 - [x] 域名购买 + 文件夹更名 + GitHub 仓库（public）：github.com/haoofun/build-your-own-ai-agent，LICENSE = MIT + 正文 CC BY-NC-SA（2026-06-11 完成）
-- [ ] M1：第 0–5 章（发布管线已在 spike 周并行搭好）
-- [ ] M2–M5：见 OUTLINE.md 第八节
-- [ ] 网站门面待补（2026-06-28）：① **tutor 陪读 skill**——hero「I'm an Agent」复制的提示词指向 `/skill/tutor.md`，现为占位文件（`public/skill/tutor.md`，防 404），正文写完后随 M4 做实；② **llms.txt**（AI 访问站点的机器可读层）未确认完成。已完成：首页加「看一眼正文」阅读预览 +「开始之前」（门槛 / 成本 / API 格式）区，关于页加 star 区，附录 A 草拟「API 平台与格式」（初稿待作者核定，`appendix-a-api-providers.mdx`）。
+- [ ] M1：序章 + 第一部分（当前网站暂按第 00–05 章展开；正式切章待 Part 终点粗实现后冻结）
+- [ ] M2–M7：见 OUTLINE.md 第八节
+- [ ] 网站门面待补（2026-06-28）：① **tutor 陪读 skill**——hero「I'm an Agent」复制的提示词指向 `/skill/tutor.md`，现为占位文件（`public/skill/tutor.md`，防 404），正文写完后随 M6 做实；② **llms.txt**（AI 访问站点的机器可读层）未确认完成。已完成：首页加「看一眼正文」阅读预览 +「开始之前」（门槛 / 成本 / API 格式）区，关于页加 star 区，附录 A 草拟「API 平台与格式」（初稿待作者核定，`appendix-a-api-providers.mdx`）。
 
 ## 分工原则
 
@@ -97,7 +110,16 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 
 日程参考：D1 API 调用 + tool use 协议（裸 loop + 1 工具，裸 fetch 与 SDK 都摸一下）；D2 完整 loop + read/write/edit/bash（能修真实 bug）；D3 环境注入 + 权限确认；D4 compaction（全书最重，单独一天）；D5 子 agent + todo（重点验证 loop 可被复用）；D6 MCP client（第二重）；D7 缓冲 + 复盘（整理坑清单、拍板 fetch vs SDK）。
 
-**阶段二：逐章循环（spike 后）**
+**阶段二：按 Part 规划、按章交付（spike 后）**
+
+每个 Part 开始前先完成一次阶段规划：
+
+1. 从 `AGENT-ARCHITECTURE.md` 提取该 Part 的出口能力、验收 demo 和明确延后项。
+2. 粗跑通该 Part 的终点；未实测的高风险形状先做 mini-spike，不打磨。
+3. 按真实代码依赖、认知负担和“每次都能跑”的 checkpoint 反推章节；此时才冻结该 Part 的章数、标题和 tag。
+4. 同步 `OUTLINE.md`、网站目录与导航；未进入的 Part 仍保持暂定。
+
+Part 内再逐章循环：
 
 1. 章前对谈：AI 摆方案利弊与真实实现做法，作者拍板设计（副产品 = 面试答案）
 2. 作者写代码（卡住问原理，不让 AI 代写）
@@ -105,5 +127,3 @@ TypeScript、Node 22+、ESM。教学优先于工程优雅：能手写就不引�
 4. 作者写讲解初稿
 5. AI 查证（对照官方文档核 API 细节）+ 润色（不改作者声音）+ 检查五段式结构
 6. 发布；章末 AI 扮面试官就该章设计决策拷问 15 分钟
-
-
