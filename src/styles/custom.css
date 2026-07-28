@@ -261,14 +261,14 @@ img, svg { display: block; }
   pointer-events: none;
   transition: opacity var(--duration-fast) var(--ease);
 }
+/* 复制按钮：图标件，不放中文标签——按钮只有一个用途，图标已经说清 */
 .code-copy {
   position: absolute;
-  top: 7px; right: 8px;
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px;
-  font-family: var(--font-sans);
-  font-size: var(--text-2xs);
-  color: var(--text-2);
+  top: 6px; right: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px;
+  padding: 0;
+  color: var(--text-3);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -278,8 +278,14 @@ img, svg { display: block; }
               border-color var(--duration-fast) var(--ease),
               color var(--duration-fast) var(--ease);
 }
+.code-copy svg { display: block; }
+.code-copy .icon-check { display: none; }
+.code-copy.copied { color: var(--text-1); border-color: var(--border-strong); }
+.code-copy.copied .icon-clipboard { display: none; }
+.code-copy.copied .icon-check { display: block; }
 .prose pre.astro-code:hover .code-copy,
-.prose pre.astro-code:focus-within .code-copy { opacity: 1; }
+.prose pre.astro-code:focus-within .code-copy,
+.code-copy.copied { opacity: 1; }
 .prose pre.astro-code:hover .code-lang,
 .prose pre.astro-code:focus-within .code-lang { opacity: 0; }
 .code-copy:hover, .code-copy:focus-visible { color: var(--text-1); border-color: var(--text-1); }
@@ -287,6 +293,38 @@ img, svg { display: block; }
   .code-copy { opacity: 1; }
   .code-lang { opacity: 0; }
 }
+
+/* ---- 代码块文件名：```ts title="src/cli.ts" ----------------------------- */
+/* 由 transformerFileTitle 在构建期落成 data-title，纯 CSS 画出，零布局抖动。 */
+.prose pre.astro-code[data-title] { padding-top: 2.4rem; }
+.prose pre.astro-code[data-title]::before {
+  content: attr(data-title);
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 7px 13px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+/* 有文件名时语言标签让位，避免右上角两件东西打架 */
+.prose pre.astro-code[data-title] .code-lang { display: none; }
+
+/* ---- 终端 transcript：提示符与内容分层 ---------------------------------- */
+/* 由 transformerTerminalPrompt 切出 you> / claude> / $，只作用于 text 类围栏。*/
+.prose .astro-code span.term-prompt {
+  user-select: none;
+  font-weight: 600;
+}
+/* 角色配色沿用孤岛（islandShared）的约定：user = 墨色实心，assistant = 次级灰 */
+.prose .astro-code span.term-prompt-you { color: var(--text-1); }
+.prose .astro-code span.term-prompt-claude { color: var(--text-3); }
+.prose .astro-code span.term-prompt-shell { color: var(--text-3); }
+/* 人说的话用正文墨色，模型/终端的输出退到次级灰——一眼看出哪几行是自己敲的 */
+.prose .astro-code .term-line-you span:not(.term-prompt) { color: var(--text-1); }
+.prose .astro-code .term-line-claude span:not(.term-prompt) { color: var(--text-2); }
 
 /* ---- 步骤序列（Steps：装配式操作序列，包裹一个标准有序列表）------------- */
 /* 刻度列：1px 竖轨被 mono 序号打断再接上。序号语法与 chapter-01 徽章一致。 */

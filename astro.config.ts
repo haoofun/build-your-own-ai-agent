@@ -6,6 +6,10 @@ import {
   transformerNotationHighlight,
   transformerNotationFocus,
 } from '@shikijs/transformers'
+import {
+  transformerFileTitle,
+  transformerTerminalPrompt,
+} from './src/data/shiki-transformers'
 
 // 章节计划——单一来源，供自定义布局、侧栏、llms.txt 生成使用
 // 文件不存在的章节由路由层跳过（写一章、上线一章，无需改配置）
@@ -47,10 +51,12 @@ export const CHAPTER_PLAN: Record<string, [file: string, label: string][]> = {
 export default defineConfig({
   site: 'https://build-your-own-ai-agent.com',
   markdown: {
-    // 双主题：token 颜色由 Shiki 出（明 github-light / 暗 github-dark），
-    // 代码面背景仍用设计 token（bg-soft 浅灰），不用 Shiki 自带的深色终端底。
+    // 双主题：token 颜色由 Shiki 出（明 light-plus / 暗 dark-plus，即 VS Code
+    // 默认的 Light+/Dark+）——读者在编辑器里看到的就是这套配色，关键字、字符串、
+    // 函数名、类型分属不同色相，比 github-* 的低饱和更容易逐行扫读。
+    // 代码面背景仍用设计 token（bg-soft），不用主题自带的底色。
     shikiConfig: {
-      themes: { light: 'github-light', dark: 'github-dark' },
+      themes: { light: 'light-plus', dark: 'dark-plus' },
       defaultColor: false,
       // 用 // [!code --/++]、// [!code highlight]、// [!code focus] 注记
       // 在语法高亮之上叠 diff / 行高亮 / 聚焦——ch04 讲 Write/Edit/diff 的刚需。
@@ -58,6 +64,8 @@ export default defineConfig({
         transformerNotationDiff({ matchAlgorithm: 'v3' }),
         transformerNotationHighlight({ matchAlgorithm: 'v3' }),
         transformerNotationFocus({ matchAlgorithm: 'v3' }),
+        transformerFileTitle(),
+        transformerTerminalPrompt(),
       ],
     },
   },
