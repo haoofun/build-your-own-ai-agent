@@ -1,33 +1,37 @@
 ---
 title: '01 · 一次 API 调用'
-description: '亲手发出一次 Messages API 调用，看清请求和响应的每个字段，再套一个无状态的终端问答壳'
+description: '发出一次 Messages API 调用，看清请求和响应的基本结构，再给它套上一个无状态的终端问答壳'
 ---
 
 import Callout from '../../components/Callout'
+import ChapterMilestone from '../../components/ChapterMilestone'
+import Steps from '../../components/Steps.astro'
 
-<Callout type="info" title="草稿">
-本章为初稿，作者润色中。
-</Callout>
+打开 Claude 或 ChatGPT，输入一句话，几秒后回答浮现，看起来像是在和一个持续存在的人聊天。
 
-打开 Claude 或 ChatGPT，输入一句话，几秒后回答浮现——这个体验流畅得像在和一个人聊天。但在工程视角下，那里没有一个持续存在的"对话"：你每发一句话，客户端就向服务器发出一个 HTTP 请求，拿回一段 JSON，渲染到屏幕上。仅此而已。
+但从我们要实现的程序来看，事情可以先简化成一次请求和一次响应：
 
-本书要造的编码 agent——能读文件、改代码、跑命令、自己修 bug 的那种——全部建立在这个朴素的事实之上。所以第一章我们只做一件事：亲手把最底下这一层打通。发出一次 API 调用，看清请求和响应长什么样，然后给它套一个能连续问答的终端外壳。
+```text
+我们的程序
+    │
+    │ HTTP POST
+    ▼
+Messages API
+    │
+    │ JSON
+    ▼
+我们的程序
+```
 
-本章结束时，你会得到一个能在终端里聊天的 CLI。它有一个此刻还看不出来的"缺陷"，我们会在章末亲手撞上它——那个缺陷正是后面两章存在的理由。
+本书不会实现大模型本身。模型是我们保留的外部黑箱；我们要从零实现的是围绕模型运行的 agent runtime。
 
-## 为什么需要它
+先从最底下的一层开始：发出一次模型调用，看看请求和响应长什么样，再把它套进一个终端循环。
 
-各种 agent 框架给人一种错觉：仿佛 agent 是某种复杂的运行时，里面有"规划器""执行器""记忆模块"在协同工作。剥开任何一个框架看，最底下都是同一件事——向模型的 API 发一个 HTTP POST，拿回一段 JSON。发送的内容不同、拿回来之后做的事不同，仅此而已。
+这一章结束后，我们会得到一个可以在终端里连续问答的 CLI。
 
-既然如此，从零造 agent 的第一步就没有悬念：先让这一下 HTTP POST 在你自己手里发生一次。不经过任何 SDK、不经过任何封装，用 `fetch` 裸调，让请求体和响应体的每个字段都从你眼前过一遍。后面每一章的能力——工具、循环、权限、压缩——都是往这一下调用的"发送内容"和"收到之后"上做文章。地基看清了，上层就不神秘。
+## 一次调用就是一个 HTTP POST
 
-本章刻意**不做**三件事：不做记忆（每轮问答都是独立请求）、不做工具（模型只能输出文字）、不做流式（等整段回答返回再打印）。它们分别是第 3、2、14 章的主角。现在引入它们，只会让你在还没看见问题的时候就背上解决方案。
-
-## 原理拆解
-
-### 一次调用就是一个 HTTP POST
-
-Anthropic 的 Messages API 只有一个我们需要关心的端点。用 curl 把一次完整调用摆在明面上：
+Anthropic 提供了 Messages API。先不用 SDK，直接用 `curl` 发一次请求：
 
 ```bash
 curl https://api.anthropic.com/v1/messages \
@@ -38,110 +42,256 @@ curl https://api.anthropic.com/v1/messages \
     "model": "claude-haiku-4-5",
     "max_tokens": 1024,
     "messages": [
-      { "role": "user", "content": "用一句话解释什么是 agent" }
+      { "role": "user", "content": "Hello, Claude!" }
     ]
   }'
 ```
 
-三个请求头各司其职：`content-type` 声明我们发的是 JSON；`x-api-key` 是你的钥匙（永远放环境变量，别写进代码——代码是要提交到 git 的）；`anthropic-version` 锁定 API 的行为版本，这样 Anthropic 后续升级接口不会突然改变你收到的响应结构。
+这里有三个请求头：
 
-请求体里三个字段全部必填：
+- `content-type`：请求体使用 JSON。
+- `x-api-key`：用于身份验证的 API key。
+- `anthropic-version`：指定使用的 API 版本，让客户端依赖一个稳定的接口约定。
 
-- `model`：用哪个模型。本书全程用 Haiku——它便宜、快，教学场景绰绰有余（这也是第 0 章 ~$5 预算承诺的来源）。
-- `max_tokens`：这次回答最多生成多少 token。这是硬上限，不是建议值——待会儿我们会亲眼看到把它调小会发生什么。
-- `messages`：对话内容本身。它是一个数组，每个元素有 `role`（谁说的）和 `content`（说了什么）。`role` 只有 `user` 和 `assistant` 两种取值。现在数组里只有一条，你可能会问：什么时候会有多条？——记住这个问题，它是第 3 章的全部内容。
-
-> 用过 OpenAI API 的读者会发现 messages 里没有 `system` 这个 role。Anthropic 的 API 里 system prompt 是和 `messages` 平级的顶层参数。它值得专门一章来讲（第 6 章），本章先不碰。
-
-### 响应长什么样
-
-上面那个请求会返回这样一段 JSON（有删节）：
+真正传给模型的内容在请求体里。
 
 ```json
 {
-  "id": "msg_01Xk...",
+  "model": "claude-haiku-4-5",
+  "max_tokens": 1024,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, Claude!"
+    }
+  ]
+}
+```
+
+现在只需要认识三个字段：
+
+- `model`：这次调用哪个模型。本书使用 Haiku，速度快，成本也适合反复实验。
+- `max_tokens`：模型这次最多可以生成多少 token。这是输出上限。
+- `messages`：传给模型的消息。它是一个数组，本章只会用到 `user` 消息。
+
+这里只有一条消息：
+
+```json
+{
+  "role": "user",
+  "content": "Hello, Claude!"
+}
+```
+
+意思就是：把 `"Hello, Claude!"` 作为用户输入交给模型。
+
+## 响应是什么样的
+
+请求成功后，我们会收到一个 JSON。
+
+例如：
+
+```json
+{
+  "model": "claude-haiku-4-5-20251001",
+  "id": "msg_011CdRx7baTqth4J6TTeVUex",
   "type": "message",
   "role": "assistant",
-  "model": "claude-haiku-4-5",
   "content": [
     {
       "type": "text",
-      "text": "Agent 是一个让大模型通过调用工具来自主完成任务的程序。"
+      "text": "Hello! It's nice to meet you. How can I help you today?"
     }
   ],
   "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "stop_details": null,
   "usage": {
-    "input_tokens": 21,
-    "output_tokens": 34
+    "input_tokens": 11,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 19,
+    "service_tier": "standard",
+    "inference_geo": "not_available"
   }
 }
 ```
 
-逐个认一下我们关心的字段。
+这一章暂时不用处理全部字段，只关注三个。
 
-**`content` 是一个数组**，而不是一个字符串。现在数组里只有一种块：`type: "text"`。为什么一段回答要包成数组？因为模型的输出不止"说话"一种——下一章你会见到第二种块，而它正是 agent 能"做事"的全部秘密。这个数组结构是整本书最重要的伏笔，先记住它的形状。
+### `content`
 
-**`stop_reason` 告诉你模型为什么停下来**。`end_turn` 意思是"我说完了"。它还有别的取值：比如 `max_tokens`——话没说完但配额用光了，硬停（马上会演示）。这个字段还有一个更有意思的取值，下一章它会成为主角。
+真正的模型输出放在 `content` 里：
 
-**`usage` 是账单**。这次请求你发了多少 token 进去（`input_tokens`）、模型生成了多少（`output_tokens`），计费就按这两个数。从本章起我们会把它打印在每轮回答后面——token 是 agent 世界的硬通货，后面讲上下文窗口（第 8 章）和压缩（第 9 章）时，所有判断都锚定在这个字段上。现在就养成看账单的习惯。
-
-### 服务器不记得你
-
-还有一个事实藏在这套结构里，值得单独说：**这个 API 是无状态的**。
-
-注意响应里没有任何"会话 ID"让你下次续传。服务器处理完你这个请求，关于它的一切就结束了——不存在一个部署好的大模型在那头悄悄记住每个用户的名字和偏好。你在 Claude app 里感受到的"它记得我们聊过什么"，不是模型的能力，而是客户端工程的能力。记忆从来都是工程的一部分。
-
-这意味着：每个请求必须**自带它需要的全部信息**。这句话现在听起来平平无奇，但它是理解后面所有章节的钥匙——上下文注入、压缩、子 agent 隔离，全都是围绕"这一个请求里该带上什么"做文章。
-
-本章的 REPL 每轮只发当前这一句，不带任何历史。这个选择的后果，章末见。
-
-## 动手实现
-
-### 项目骨架
-
-```bash
-mkdir -p code/src && cd code
-npm init -y
-npm install --save-dev tsx typescript
+```json
+"content": [
+  {
+    "type": "text",
+    "text": "Hello! It's nice to meet you. How can I help you today?"
+  }
+]
 ```
 
-`tsx` 让我们直接运行 TypeScript 文件，不用先编译。这是本书引入的第一个依赖，也是极少数几个之一——它属于工具链，不属于 agent 本身。
+注意，`content` 不是字符串，而是一个数组。
 
-`package.json` 里加一条脚本：
+现在我们只看到了：
 
 ```json
 {
-  "type": "module",
-  "scripts": {
-    "dev": "tsx src/index.ts"
-  }
+  "type": "text"
 }
 ```
 
-`tsconfig.json` 保持最小：
+也就是一段文本内容。
 
-```json
-{
-  "compilerOptions": {
-    "target": "es2022",
-    "module": "nodenext",
-    "strict": true,
-    "skipLibCheck": true
-  }
-}
-```
-
-最后把 API key 放进环境变量（获取方式见第 0 章；国内网络环境见附录 A）：
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-xxxx
-```
-
-### 第一步：把调用封装成一个函数
-
-新建 `src/index.ts`。先写核心中的核心——把"调一次模型"封装成函数：
+因此，模型返回的文字实际上是：
 
 ```ts
+data.content[0].text
+```
+
+### `stop_reason`
+
+```json
+"stop_reason": "end_turn"
+```
+
+它表示模型为什么停止生成。
+
+`end_turn` 表示这次回答自然结束。
+
+如果输出碰到了我们设置的 `max_tokens` 上限，则可能看到：
+
+```json
+"stop_reason": "max_tokens"
+```
+
+所以仅仅拿到一段文字还不够，有时候我们还需要知道：
+
+> 模型为什么停下来？
+
+### `usage`
+
+```json
+"usage": {
+  "input_tokens": 11,
+  "output_tokens": 19
+}
+```
+
+这里记录了本次调用消耗的输入和输出 token。
+
+API 的使用成本与这些 token 数量有关。现在我们先把它们打印出来，方便以后观察每次请求实际消耗了多少上下文。
+
+## Messages API 不会替我们维护对话
+
+还有一个特点需要在写 REPL 之前知道：
+
+**每次 Messages API 调用都由我们自己提供这一次需要的消息。**
+
+例如刚才发送的是：
+
+```json
+"messages": [
+  {
+    "role": "user",
+    "content": "Hello, Claude!"
+  }
+]
+```
+
+如果下一次我们发送：
+
+```json
+"messages": [
+  {
+    "role": "user",
+    "content": "What's my name?"
+  }
+]
+```
+
+那么模型这一次能看到的就是 `"What's my name?"`。
+
+上一轮到底说过什么，不会因为这是同一个终端程序就自动出现在新的请求里。
+
+如果以后希望模型看到之前的对话，我们需要自己把相关历史再次放进 `messages`。
+
+这一章先不做这件事。
+
+我们的 REPL 每轮只发送当前输入。
+
+## 建一个最小项目
+
+<Callout type="info" title="先拿到 API key">
+本章开始需要一个 Anthropic API key，获取方式见[第 0 章](/00-intro)。如果所在网络访问 `api.anthropic.com` 不便，或者想用 OpenAI 兼容的端点跑完本书，见[附录 A](/appendix-a-api-providers)。
+</Callout>
+
+<Steps>
+1. **创建项目并装依赖**。`tsx` 让我们直接运行 TypeScript，不需要先手动执行一次编译。
+
+   ```bash
+   mkdir -p code/src
+   cd code
+
+   npm init -y
+   npm install --save-dev tsx typescript @types/node
+   ```
+2. **把 `package.json` 改成 ESM**，并增加一个启动脚本。
+
+   ```json title="package.json"
+   {
+     "type": "module",
+     "scripts": {
+       "dev": "tsx --env-file=.env src/cli.ts"
+     }
+   }
+   ```
+3. **加一个最小的 `tsconfig.json`**。
+
+   ```json title="tsconfig.json"
+   {
+     "compilerOptions": {
+       "target": "es2022",
+       "module": "nodenext",
+       "strict": true,
+       "skipLibCheck": true,
+       "types": ["node"]
+     }
+   }
+   ```
+4. **在项目根目录创建 `.env`**，把 key 放进去。启动脚本里的 `--env-file=.env` 会读它。
+
+   ```bash title=".env"
+   ANTHROPIC_API_KEY=sk-ant-xxxx
+   ```
+5. **马上创建 `.gitignore`**。API key 不应该写进代码，也不应该提交到 Git。
+
+   ```bash
+   echo ".env" >> .gitignore
+   ```
+</Steps>
+
+现在目录是：
+
+```text
+code/
+├─ .env
+├─ .gitignore
+├─ package.json
+├─ tsconfig.json
+└─ src/
+```
+
+## 调用一次模型
+
+创建 `src/cli.ts`：
+
+```ts title="src/cli.ts"
 const API_URL = 'https://api.anthropic.com/v1/messages'
 const MODEL = 'claude-haiku-4-5'
 const API_KEY = process.env.ANTHROPIC_API_KEY
@@ -157,53 +307,98 @@ async function callModel(userInput: string) {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1024,
-      messages: [{ role: 'user', content: userInput }],
+      messages: [
+        {
+          role: 'user',
+          content: userInput,
+        },
+      ],
     }),
   })
+
   if (!res.ok) {
-    throw new Error(`API 返回 ${res.status}：${await res.text()}`)
+    throw new Error(
+      `API returned ${res.status}: ${await res.text()}`,
+    )
   }
+
   return res.json()
 }
 ```
 
-两个设计细节，都是为了以后：
-
-一，`callModel` 返回**完整的响应对象**，而不是把 `content` 里的文字抠出来返回一个字符串。眼下调用方只用得到那段文字，返回字符串明明更方便——但下一章我们就要检查 `content` 数组里有没有别的块、要读 `stop_reason` 决定下一步做什么。如果现在把响应压扁成字符串，下一章第一件事就是推翻这个函数。接口的形状要为已知的未来留口子。
-
-二，错误处理只有一行：非 200 就把状态码和响应原文抛出来。响应原文里通常带着可读的错误说明（key 无效、余额不足、超频），原样打印比自作聪明地翻译更有用。重试、退避这些真正的健壮性工程是第 10 章的事，现在不做。
-
-注意我们没有给返回值标类型——`res.json()` 出来就是个 `any`。裸奔当然不舒服，但先忍着：等下一章响应结构变复杂、字段访问开始出错时，你会真心实意地想要类型，那时我们再手写它们。
-
-### 第二步：先跑通一次
-
-在文件末尾加上入口，单发一次调用：
+这就是目前程序里最重要的函数：
 
 ```ts
+callModel(userInput)
+```
+
+它做三件事：
+
+```text
+userInput
+    ↓
+组成 HTTP 请求
+    ↓
+发送给 Messages API
+    ↓
+返回 JSON
+```
+
+这里暂时没有给响应定义 TypeScript 类型，`res.json()` 返回的结果先直接使用。
+
+错误处理也保持最小：如果 API 返回失败状态码，就把状态码和原始错误信息抛出来。
+
+现在在文件下面调用一次：
+
+```ts title="src/cli.ts"
 if (!API_KEY) {
-  console.error('请先设置环境变量 ANTHROPIC_API_KEY')
+  console.error('Please set ANTHROPIC_API_KEY')
   process.exit(1)
 }
 
-const data = await callModel('用一句话解释什么是 agent')
+const data = await callModel('Hello, Claude!')
 console.log(data.content[0].text)
 ```
+
+运行：
 
 ```bash
 npm run dev
 ```
 
-如果一切正常，终端里会出现一句回答。恭喜——你和大模型之间已经没有任何中间商了。
+如果配置正确，会看到类似：
 
-### 第三步：套上 REPL 外壳
+```text
+Hello! It's nice to meet you. How can I help you today?
+```
 
-单发一次不好玩。把入口换成一个循环：读一句、发出去、打印回答、再读下一句。用 Node 自带的 `readline` 就够：
+到这里，我们已经能从自己的程序里调用模型了。
 
-```ts
+## 加一个 REPL
+
+每次修改代码才能换一个问题显然不方便。
+
+我们给它加一个终端循环：
+
+```text
+读输入
+  ↓
+callModel
+  ↓
+打印回答
+  ↓
+继续读输入
+```
+
+Node 自带的 `readline` 已经够用了。
+
+把文件底部的单次调用替换成：
+
+```ts title="src/cli.ts"
 import readline from 'node:readline/promises'
 
 if (!API_KEY) {
-  console.error('请先设置环境变量 ANTHROPIC_API_KEY')
+  console.error('Please set ANTHROPIC_API_KEY')
   process.exit(1)
 }
 
@@ -211,91 +406,204 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 })
-console.log(`模型：${MODEL}（输入 /exit 退出）`)
+
+console.log(`model: ${MODEL} (input /exit to exit)`)
 
 while (true) {
   const line = (await rl.question('you> ')).trim()
+
   if (line === '/exit') break
   if (line === '') continue
 
   const data = await callModel(line)
+
   const text = data.content
     .filter((block: any) => block.type === 'text')
     .map((block: any) => block.text)
     .join('')
+
   console.log(`claude> ${text}`)
-  console.log(`  · ${data.usage.input_tokens} in / ${data.usage.output_tokens} out · ${data.stop_reason}`)
+  console.log(
+    `  · ${data.usage.input_tokens} in / ${data.usage.output_tokens} out · ${data.stop_reason}`,
+  )
 }
 
 rl.close()
 ```
 
-打印回答时我们没有直接取 `content[0].text`，而是过滤出所有 text 块再拼接——对 content 是数组这个事实保持诚实，下一章会感谢现在的自己。每轮回答后面跟一行小字：进出 token 数和停止原因，账单和行为都摆在明面上。
+这里仍然只有一次模型调用：
 
-就这么多。整个程序不到 60 行，没有类、没有抽象层、没有配置文件。它已经是本书最终那个 agent 的第一块骨头：`callModel` 这个函数会一路活到最后一章——换实现、加参数，但"调用模型、返回完整响应"这个位置不变。
-
-## 跑起来看效果
-
-### 正常聊天
-
+```ts
+const data = await callModel(line)
 ```
+
+只是外面多了一个 `while` 循环。
+
+每当用户输入一句话，我们就把这一句单独发给模型。
+
+打印结果时，没有直接写：
+
+```ts
+data.content[0].text
+```
+
+而是过滤所有 `text` block：
+
+```ts
+const text = data.content
+  .filter((block: any) => block.type === 'text')
+  .map((block: any) => block.text)
+  .join('')
+```
+
+因为 `content` 本来就是一个数组。
+
+如果响应里有多个文本块，我们就把它们全部打印出来。
+
+最后顺手显示这一次请求的：
+
+```text
+input tokens
+output tokens
+stop_reason
+```
+
+现在再运行：
+
+```bash
+npm run dev
+```
+
+## 它已经能聊天了
+
+```text
 $ npm run dev
-模型：claude-haiku-4-5（输入 /exit 退出）
-you> 用一句话解释什么是 TypeScript
-claude> TypeScript 是给 JavaScript 加上静态类型系统的超集语言，编译后仍是普通的 JavaScript。
-  · 24 in / 41 out · end_turn
+
+model: claude-haiku-4-5 (input /exit to exit)
+
+you> hello, claude
+claude> Hello! It's nice to meet you. How can I help you today?
+  · 10 in / 19 out · end_turn
 ```
 
-能问能答，`stop_reason` 是 `end_turn`：模型自己把话说完了。这一轮花了 65 个 token，按 Haiku 的价格约等于 0.02 美分——放心多聊几句。
+我们已经有了一个最小的终端聊天程序。
 
-### 把 max_tokens 调小，看硬上限长什么样
+但它现在究竟能做什么？
 
-把 `callModel` 里的 `max_tokens` 改成 `50`，问一个需要长回答的问题：
+继续试。
 
-```
-you> 详细介绍一下 Node.js 的事件循环机制
-claude> Node.js 的事件循环是其异步非阻塞 I/O 的核心。它分为多个阶段：首先是 timers 阶段，处理 setTimeout 和
-  · 31 in / 50 out · max_tokens
-```
+```text
+you> my name is xiaoming
+claude> Nice to meet you, Xiaoming!
 
-回答在半句话处被拦腰斩断，`output_tokens` 正好是 50，`stop_reason` 变成了 `max_tokens`。这就是"硬上限"的意思：不是模型决定说到这，是配额用光了被掐断。`stop_reason` 的价值在这里第一次显形——**不能只看模型说了什么，要看它为什么停**。下一章这个字段会出现第三种取值，整个 agent loop 都将围绕它运转。
-
-改回 1024，继续。
-
-### 撞墙时刻：它记不住你
-
-现在，和它多聊两句：
-
-```
-you> 我叫小明，很高兴认识你
-claude> 你好小明！很高兴认识你，有什么我可以帮忙的吗？
-  · 19 in / 23 out · end_turn
-you> 我叫什么？
-claude> 抱歉，我不知道你的名字——你还没有告诉过我。
-  · 12 in / 21 out · end_turn
+you> what's my name
+claude> I don't have any information about your name.
 ```
 
-上一秒它还热情地叫你小明，下一秒就翻脸不认人。但回头看代码，这不是 bug——`callModel` 每次只发当前这一句，第二个请求里根本没有"我叫小明"这回事。服务器不记得你（原理拆解里说过），而我们的客户端也什么都没帮它记。两个请求之间，唯一的联系是它们碰巧发自同一个终端窗口。
+它忘了。
 
-再试试让它干点活：
+回头看 `callModel`：
 
+```ts
+messages: [
+  {
+    role: 'user',
+    content: userInput,
+  },
+]
 ```
-you> 读一下当前目录的 todo.txt，告诉我还有什么没做
-claude> 抱歉，我无法访问你的文件系统。你可以把 todo.txt 的内容粘贴给我，我来帮你分析。
-  · 26 in / 38 out · end_turn
+
+第一次请求发送：
+
+```text
+my name is xiaoming
 ```
 
-它很诚实（运气不好的话，它会一本正经地编出一个不存在的待办清单——那更糟）。文件就躺在离进程一个 `readFile` 的地方，但模型碰不到：它的全部输出就是一段 JSON 里的文字，我们的程序拿到文字之后只做了一件事——打印。
+第二次请求发送：
 
-至此，这个程序的能力边界完全清楚了：
+```text
+what's my name
+```
 
-**我们造出了一个会说话的模型，还没有造出 agent。** 它记不住上一句（每个请求都是独立的——第 3 章解决），也做不了任何事（它只能输出文字，而我们只会打印——下一章解决）。
+第二个请求里根本没有：
 
-还有一个更深的区别值得预告：现在这个 `while` 循环里，**每一次模型调用都由人触发**——你不敲回车，什么都不会发生。而 agent 的标志是控制权反转：人给一个任务，**模型决定程序接下来做什么**、要调用几次才算完成。同样是循环，谁驱动它，是 REPL 和 agent loop 的分水岭。我们会在第 3 章亲手跨过去。
+```text
+my name is xiaoming
+```
 
-## 练习与延伸
+所以模型当然不知道。
 
-1. **把响应完整打印出来**。用 `console.dir(data, { depth: null })` 替换打印逻辑，对照"原理拆解"把每个字段认一遍。响应里还有几个本章没讲的字段（比如 `usage` 里的缓存相关计数），猜猜它们是干什么的——第 8 章见分晓。
-2. **给 REPL 加一个累计账单**。维护两个计数器累加每轮的 `input_tokens` 和 `output_tokens`，`/exit` 时打印本次会话总消耗，再按 Haiku 的单价折算成美元。这个小功能会让你对"聊天有多便宜、什么东西贵"建立体感——第 8 章之前你就会自己发现答案。
-3. **试玩 `system` 参数**。在请求体里加一行顶层字段 `system: "你只用文言文回答"`，观察它对每一轮回答的影响。想一想：为什么这句话适合放在顶层参数里，而不是塞进 `messages`？第 6 章有完整答案。
-4. **思考题（不要往后翻）**：如果让你来解决"它记不住上一句"，你会怎么做？把方案写下来——不用写代码，一两句话就行。第 3 章开头和标准答案对一下，你大概率已经答对了核心。
+这就是前面所说的：Messages API 不会替我们维护对话历史。
+
+当前程序中的两个请求，除了碰巧由同一个 `while` 循环发出之外，没有任何关系。
+
+## 它也看不到我们的文件
+
+再让它做一件编码 agent 应该能做的事情：
+
+```text
+you> 帮我 review 一下 src 目录下的 cli.ts
+
+claude> 我目前无法访问你的本地文件系统。请把 src/cli.ts 的内容粘贴给我，我可以帮你 review。
+```
+
+`src/cli.ts` 明明就在当前进程旁边。
+
+Node 可以读它：
+
+```ts
+readFile(...)
+```
+
+但 Claude 看不到。
+
+因为我们现在传给模型的只有：
+
+```ts
+messages: [
+  {
+    role: 'user',
+    content: userInput,
+  },
+]
+```
+
+模型能做的事情也只有返回响应。
+
+我们的程序拿到响应以后，又只做了一件事：
+
+```ts
+console.log(...)
+```
+
+所以现在这个程序：
+
+```text
+人输入一句话
+    ↓
+模型生成文字
+    ↓
+程序打印文字
+```
+
+它已经会说话，但还不会做事。
+
+下一步，我们先让模型能够读取一个本地文件。
+
+## 本章总结
+
+<ChapterMilestone
+  added={[
+    {
+      path: 'src/cli.ts',
+      items: [
+        { name: 'callModel()', note: '组装请求、调用 Messages API、返回整个 JSON' },
+        { name: 'REPL 循环', note: '读取输入，打印回答与本轮 token 消耗' },
+      ],
+    },
+    { path: 'package.json', note: 'ESM + dev 脚本（tsx --env-file=.env）' },
+    { path: 'tsconfig.json', note: 'strict、nodenext' },
+    { path: '.env', note: 'ANTHROPIC_API_KEY' },
+  ]}
+  summary="现在这个 CLI 能在终端里连续问答，每一轮都看得到 token 消耗和 stop_reason，还不能记住上一轮对话、读取本地文件。"
+/>
