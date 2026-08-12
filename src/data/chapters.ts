@@ -34,7 +34,7 @@ export const PARTS: Part[] = [
     deferred: '跨轮 messages、tool use、agent loop、流式与 SDK。',
     chapters: [
       { n: '00', t: '导言：把黑盒拆开', m: '环境就绪，看完最终成品演示', desc: '为什么 agent 没有魔法；最终成品演示；环境准备（Node 22+、API key、~$5 预算）。' },
-      { n: '01', t: '一次 API 调用', m: '一个会失忆的聊天 CLI——连问"我叫什么"都答不出', desc: 'messages 与角色、system prompt；打通一次干净的调用，再套一个无状态对话循环。' },
+      { n: '01', t: '从 API 调用到聊天 CLI', m: '一个会失忆的聊天 CLI——连问"我叫什么"都答不出', desc: 'messages 与角色；打通一次干净的调用，再套一个无状态对话循环。' },
     ],
   },
   {

@@ -1,6 +1,6 @@
 ---
-title: '01 · 一次 API 调用'
-description: '发出一次 Messages API 调用，看清请求和响应的基本结构，再给它套上一个无状态的终端问答壳'
+title: '01 · 从 API 调用到聊天 CLI'
+description: '发出一次 Messages API 调用，了解请求和响应的基本结构，再加上一个无状态的终端问答壳'
 ---
 
 import Callout from '../../components/Callout'
@@ -247,7 +247,7 @@ API 的使用成本与这些 token 数量有关。现在我们先把它们打印
    {
      "type": "module",
      "scripts": {
-       "dev": "tsx --env-file=.env src/cli.ts"
+       "dev": "tsx --env-file-if-exists=.env src/cli.ts"
      }
    }
    ```
@@ -264,7 +264,7 @@ API 的使用成本与这些 token 数量有关。现在我们先把它们打印
      }
    }
    ```
-4. **在项目根目录创建 `.env`**，把 key 放进去。启动脚本里的 `--env-file=.env` 会读它。
+4. **在项目根目录创建 `.env`**，把 key 放进去。启动脚本里的 `--env-file-if-exists=.env` 会读它；如果你已经在终端环境里设置了 key，没有这个文件也可以启动。
 
    ```bash title=".env"
    ANTHROPIC_API_KEY=sk-ant-xxxx
@@ -352,7 +352,7 @@ userInput
 
 ```ts title="src/cli.ts"
 if (!API_KEY) {
-  console.error('Please set ANTHROPIC_API_KEY')
+  console.error('Please set your ANTHROPIC_API_KEY')
   process.exit(1)
 }
 
@@ -494,10 +494,15 @@ claude> Hello! It's nice to meet you. How can I help you today?
 
 ```text
 you> my name is xiaoming
-claude> Nice to meet you, Xiaoming!
+claude> # Nice to meet you, Xiaoming! 👋
 
+I'm Claude, an AI assistant. How can I help you today?
+  · 12 in / 32 out · end_turn
 you> what's my name
-claude> I don't have any information about your name.
+claude> I don't have any information about your name. We haven't met before, and I don't have access to personal information about you unless you share it with me in our conversation.
+
+What's your name?
+  · 11 in / 46 out · end_turn
 ```
 
 它忘了。
@@ -542,9 +547,23 @@ my name is xiaoming
 再让它做一件编码 agent 应该能做的事情：
 
 ```text
-you> 帮我 review 一下 src 目录下的 cli.ts
+you> review cli.ts in the src directory.
+claude> I don't have access to your file system or the ability to browse local directories. However, I can help you review `cli.ts` if you:
 
-claude> 我目前无法访问你的本地文件系统。请把 src/cli.ts 的内容粘贴给我，我可以帮你 review。
+1. **Copy and paste the file contents** here, and I'll review it for:
+   - Code quality and best practices
+   - Potential bugs or issues
+   - Performance improvements
+   - TypeScript best practices
+   - CLI design patterns
+   - Error handling
+
+2. **Describe what it does**, and I can suggest improvements or point out common issues
+
+3. **Ask specific questions** about parts of the code you're unsure about
+
+Please share the code, and I'll be happy to provide a thorough review!
+  · 16 in / 150 out · end_turn
 ```
 
 `src/cli.ts` 明明就在当前进程旁边。
@@ -586,10 +605,6 @@ console.log(...)
 程序打印文字
 ```
 
-它已经会说话，但还不会做事。
-
-下一步，我们先让模型能够读取一个本地文件。
-
 ## 本章总结
 
 <ChapterMilestone
@@ -601,7 +616,7 @@ console.log(...)
         { name: 'REPL 循环', note: '读取输入，打印回答与本轮 token 消耗' },
       ],
     },
-    { path: 'package.json', note: 'ESM + dev 脚本（tsx --env-file=.env）' },
+    { path: 'package.json', note: 'ESM + dev 脚本（tsx --env-file-if-exists=.env）' },
     { path: 'tsconfig.json', note: 'strict、nodenext' },
     { path: '.env', note: 'ANTHROPIC_API_KEY' },
   ]}

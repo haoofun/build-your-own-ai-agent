@@ -16,7 +16,7 @@ import {
 export const CHAPTER_PLAN: Record<string, [file: string, label: string][]> = {
   '序章 · 看见模型边界': [
     ['00-intro', '00 · 导言：把黑盒拆开'],
-    ['01-first-api-call', '01 · 一次 API 调用'],
+    ['01-first-api-call', '01 · 从 API 调用到聊天 CLI'],
   ],
   '第一部分 · 核心闭环': [
     ['02-tool-use', '02 · Tool Use：给模型一双手'],

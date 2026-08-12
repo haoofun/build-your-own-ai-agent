@@ -19,7 +19,9 @@ async function callModel(userInput: string) {
     }),
   })
   if (!res.ok) {
-    throw new Error(`API return ${res.status}：${await res.text()}`)
+    throw new Error(
+      `API returned ${res.status}: ${await res.text()}`,
+    )
   }
   return res.json()
 }
@@ -33,7 +35,7 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 })
-console.log(`model:${MODEL}(input /exit to exit)`)
+console.log(`model: ${MODEL} (input /exit to exit)`)
 
 while (true) {
   const line = (await rl.question('you> ')).trim()
