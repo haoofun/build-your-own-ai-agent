@@ -46,7 +46,7 @@ export const PARTS: Part[] = [
     acceptance: '对带失败测试的 fixture 完成“读、改、跑、再改、通过”，并用同一 transcript 验证 fetch / SDK 等价。',
     deferred: '环境注入、权限、长上下文、持久化和子 agent；不预留空回调。',
     chapters: [
-      { n: '02', t: 'Tool Use：给模型一双手', m: '能查时间、算算术的助手', desc: '工具即 JSON Schema 声明；tool call 的请求-响应协议；为什么说"模型只是输出了一段 JSON"。' },
+      { n: '02', t: 'Tool Use：给模型一双手', m: '能查询指定时区时间的助手', desc: '工具即 JSON Schema 声明；tool call 的请求-响应协议；为什么说"模型只是输出了一段 JSON"。' },
       { n: '03', t: 'Agent Loop：循环直到完成', m: '记得住你上一句的代码问答 agent', desc: 'loop 的终止条件；messages 数组的增长方式；实现 read_file 工具。' },
       { n: '04', t: '写与改：Write、Edit 与 diff', m: '能修真实 bug 的最小编码 agent', desc: '全量写 vs 精确替换；old_string/new_string 的设计权衡；终端里渲染 diff。' },
       { n: '05', t: 'Bash：让 agent 跑命令', m: '丢给它一个失败的测试，它自己修到通过', desc: '子进程、stdout/stderr 捕获、超时与输出截断；跑测试→看报错→改代码→再跑的自我迭代闭环。' },

@@ -71,7 +71,7 @@ messages 与角色；先打通一次干净的调用（request→response），�
 
 **02 Tool Use：给模型一双手**
 工具即 JSON Schema 声明；tool call 的请求-响应协议；为什么说"模型只是输出了一段 JSON"。
-→ 里程碑：能查时间、算算术的助手。
+→ 里程碑：能查询指定时区时间的助手。
 
 **03 Agent Loop：循环直到完成**
 loop 的终止条件；messages 数组的增长方式；实现 `read_file` 工具。这里用**同一个动作**——往 messages 数组 append、再把整个数组发回去——一次解决两件事：给对话补上记忆（治好 ch01 的失忆），也驱动 agent loop（append tool_use、再 append tool_result、重发）。客户端从此**有状态**，模型仍无状态。

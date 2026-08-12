@@ -1,29 +1,595 @@
 ---
 title: '02 · Tool Use：给模型一双手'
+description: '将本地函数声明成工具，完成 tool_use 的最小调用'
 ---
 
-import Callout from '../../components/Callout'
+import ChapterMilestone from '../../components/ChapterMilestone'
 
-<Callout type="info" title="正文撰写中">
-本章正在写作中（全书处于写作前期 spike 周）。下面是本章的固定结构，正文将逐节补全。
-</Callout>
+上一章最后，我们让聊天 CLI review `src/cli.ts`。它却说无法访问我们的文件系统，只能请我们手动粘贴代码。
 
-## 为什么需要它
+这是因为当前程序发给模型的只有一条文字消息，拿到响应后也只会打印文字。模型既看不到本地环境，也不能直接调用 Node 函数。
 
-`// 待撰写`
+在这一章我们先用一个更小的 `get_current_time` 函数完成一个最小的 tool use 的调用：让模型查询指定时区的当前时间。
 
-## 原理拆解
+这个流程是这样的：
 
-`// 待撰写`
+```text
+用户提出任务
+    ↓
+模型返回 tool_use
+    ↓
+程序执行本地函数
+    ↓
+程序回传 tool_result
+    ↓
+模型根据结果回答
+```
 
-## 动手实现
+## 将工具定义发给模型
 
-`// 待撰写`
+我们需要先告知模型：“这里有一个工具。”
 
-## 跑起来看效果
+创建 `src/tools.ts`：
 
-`// 待撰写`
+```ts title="src/tools.ts"
+export const tools = [
+  {
+    name: 'get_current_time',
+    description: 'Get the current date and time in an IANA time zone.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        time_zone: {
+          type: 'string',
+          description: 'IANA time zone, for example Asia/Shanghai.',
+        },
+      },
+      required: ['time_zone'],
+    },
+  },
+]
+```
 
-## 练习与延伸
+一份工具定义由这几个字段描述：
 
-`// 待撰写`
+- `name` 是模型稍后返回的工具名。
+- `description` 告诉模型这个工具什么时候有用。
+- `input_schema` 用 JSON Schema 描述参数形状。
+- `input_examples`（可选）是一个示例输入对象数组。
+
+回到 `src/cli.ts`，导入 `tools` 对象，把它放进 `callModel()` 的请求体：
+
+```ts title="src/cli.ts"
+import { tools } from './tools.js'
+
+body: JSON.stringify({
+  model: MODEL,
+  max_tokens: 1024,
+  messages: [
+    {
+      role: 'user',
+      content: userInput,
+    },
+  ],
+  tools,
+  tool_choice: {
+    type: 'auto',
+    disable_parallel_tool_use: true,
+  },
+}),
+```
+
+`type: 'auto'` 让模型自己决定调用工具还是直接回答。Claude 默认可能在同一轮提出多个调用；我们先手动关闭并行工具调用，将 `disable_parallel_tool_use` 置为 true。
+
+```ts title="src/cli.ts"
+  console.log(`claude> ${text}`)
+  console.log(`  · ${data.usage.input_tokens} in / ${data.usage.output_tokens} out · ${data.stop_reason}`)
+
+  console.dir(data, { depth: null })
+```
+
+先在最后打印模型的完整返回，看看模型接收到工具定义之后会做什么。运行程序，会看到类似：
+
+```text
+you> 上海现在几点？
+claude> 我来查看一下上海现在的时间。
+  · 386 in / 66 out · tool_use
+{
+  model: 'claude-haiku-4-5-20251001',
+  id: 'msg_011CddPhuEkPLXNJoqxo45Kk',
+  type: 'message',
+  role: 'assistant',
+  content: [
+    { type: 'text', text: '我来查看一下上海现在的时间。' },
+    {
+      type: 'tool_use',
+      id: 'toolu_01KGBcxbKTZJfjf8xdWwHSeZ',
+      name: 'get_current_time',
+      input: { time_zone: 'Asia/Shanghai' },
+      caller: { type: 'direct' }
+    }
+  ],
+  stop_reason: 'tool_use',
+  stop_sequence: null,
+  stop_details: null,
+  usage: {
+    input_tokens: 386,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+    cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 },
+    output_tokens: 66,
+    service_tier: 'standard',
+    inference_geo: 'not_available'
+  }
+}
+```
+
+模型没有自己去读出时间。它返回了两个块，一个 text 块，一个 tool_use 块，tool_use 块返回了我们定义的工具名称，以及规定的输入、本次调用的 id，用于表达“请调用 `get_current_time`，参数是 `{ time_zone: 'Asia/Shanghai' }`”。caller 表示这次调用由谁发起。本书的工具全部由模型直接发起、在本地执行，这个字段恒为 direct。另一种取值属于 programmatic tool calling，本书暂不涉及。
+
+## 实现工具函数
+
+接下来我们需要实现工具函数，函数的输入来自于模型返回中的 tool_use 块的 input。由于这些数据来自 HTTP 响应，它们不是 TypeScript 代码里自己创建的对象，而是外部输入。经过 fetch 和 JSON 解析后，程序面对的实际上是不可信的数据。TypeScript 会把这种外部数据表示为：`unknown`，因此，我们先定义 API 中会使用到的数据结构：
+
+创建 `src/types.ts`：
+
+```ts title="src/types.ts"
+export type ToolUseBlock = {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: unknown
+}
+```
+这里我们把 input 定义为 unknown，这代表 JSON Schema 可以告诉模型应该生成什么参数，但是 JSON Schema 不会自动生成 TypeScript 类型，程序仍然需要自己验证模型返回的参数。
+
+接下来实现工具函数。
+
+根据前面定义的 JSON Schema，我们期望模型传入这样的参数：
+
+```json
+{
+  "time_zone": "Asia/Shanghai"
+}
+```
+
+但 `ToolUseBlock.input` 是 `unknown`。在真正读取 `time_zone` 之前，我们至少要先确认一件事：**这个值是不是一个对象。**
+
+先给“已经确认是对象，但内部字段还没有验证”的数据定义一个类型：
+
+```ts
+type ToolInput = Record<string, unknown>
+```
+
+`Record<string, unknown>` 是 TypeScript 内置的工具类型，可以把它理解成：
+
+```ts
+{
+  [key: string]: unknown
+}
+```
+
+也就是：
+
+> key 是字符串，但每个 value 目前是什么类型还不知道。
+
+这正好符合我们此时掌握的信息。
+
+我们还不知道 `time_zone` 是否真的存在，也不知道它是不是字符串；现在只准备先确认 `input` 是一个普通对象。
+
+于是定义一个辅助函数：
+
+```ts
+function asObject(input: unknown): ToolInput {
+  if (
+    input === null ||
+    typeof input !== 'object' ||
+    Array.isArray(input)
+  ) {
+    throw new Error('tool input must be an object')
+  }
+
+  return input as ToolInput
+}
+```
+
+这里真正负责验证的是前面的 `if`。
+
+如果 `input` 是：
+
+```ts
+null
+```
+
+或者：
+
+```ts
+"Asia/Shanghai"
+```
+
+或者：
+
+```ts
+["Asia/Shanghai"]
+```
+
+都会直接抛出错误。
+
+只有检查通过后，我们才用：
+
+```ts
+input as ToolInput
+```
+
+告诉 TypeScript：
+
+> 从这里开始，我们已经确认它是一个对象，可以按照 `Record<string, unknown>` 来访问它的字段。
+
+注意，`Record` 并没有把 `input` 转换成另一个对象。它只是描述这个对象现在已知的类型。
+
+所以：
+
+```ts
+const args = asObject(input)
+```
+
+之后，我们终于可以写：
+
+```ts
+args.time_zone
+```
+
+但此时 `args.time_zone` 的类型仍然是 `unknown`。
+
+因为到目前为止，我们只验证了第一层：
+
+```text
+unknown
+   ↓
+是不是对象？
+   ↓
+Record<string, unknown>
+   ↓
+time_zone 是不是 string？
+   ↓
+可以真正使用
+```
+
+接下来再继续检查具体字段：
+
+```ts
+if (typeof args.time_zone !== 'string') {
+  throw new Error('time_zone must be a string')
+}
+```
+
+这样才完成了对工具参数的验证。
+
+然后实现时间工具：
+
+```ts title="src/tools.ts"
+export function getCurrentTime(input: unknown): string {
+  const args = asObject(input)
+
+  if (typeof args.time_zone !== 'string') {
+    throw new Error('time_zone must be a string')
+  }
+
+  const now = new Date()
+
+  const formatter = new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'full',
+    timeStyle: 'long',
+    timeZone: args.time_zone,
+  })
+
+  return formatter.format(now)
+}
+```
+在工具函数中，我们还需要手动确认 args.time_zone 是 string 而非 unknown ，然后才能安全的传给 new Intl.DateTimeFormat(...)。
+这里使用 JavaScript 内置的 Intl.DateTimeFormat 来处理时区和时间格式。
+new Date() 获取当前时间；timeZone: args.time_zone 指定模型传入的目标时区，例如 Asia/Shanghai；最后调用 .format()，把时间转换成适合直接返回给模型的字符串。
+
+## 定义 message api 的部分 type
+
+前面我们已经看过一次 Messages API 返回 `tool_use` 时的 JSON 结构。
+
+接下来，程序不只是要把这段 JSON 打印出来，而是要真正读取它：
+
+- 判断某个 content block 是普通文本还是 `tool_use`
+- 从 `tool_use` 中取出 `name`、`id` 和 `input`
+- 执行本地工具
+- 再构造一个 `tool_result` 消息发回 Messages API
+
+也就是说，从这里开始，我们会频繁在代码里处理 Messages API 的消息结构。
+
+如果一直直接操作未经描述的 JSON：
+
+```ts
+response.content[0].type
+response.content[0].name
+response.content[0].input
+```
+
+TypeScript 并不知道这些字段之间有什么关系，也无法在我们判断 `type === 'tool_use'` 后自动推断出 `name` 和 `input` 一定存在。
+
+因此，在继续实现工具调用之前，先把接下来会用到的 Messages API 数据结构定义成 TypeScript 类型，就像我们定义 ToolUseBlock 类型一样。
+
+我们不需要完整复刻整个 Messages API，只定义当前代码会读取和构造的部分：
+
+```ts title="src/types.ts"
+export type TextBlock = {
+  type: 'text'
+  text: string
+}
+
+export type ToolUseBlock = {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: unknown
+}
+
+export type ToolResultBlock = {
+  type: 'tool_result'
+  tool_use_id: string
+  content: string
+}
+```
+
+这三个类型分别对应这次工具往返中的三种数据：
+
+```text
+模型输出普通回答
+        ↓
+     TextBlock
+
+模型请求调用工具
+        ↓
+   ToolUseBlock
+
+程序把工具结果发回模型
+        ↓
+  ToolResultBlock
+```
+
+由于一次 assistant 响应中可能同时出现文本和工具调用，所以再把它们组合起来：
+
+```ts title="src/types.ts"
+export type ContentBlock = TextBlock | ToolUseBlock
+```
+
+这样，当代码判断：
+
+```ts
+if (block.type === 'tool_use') {
+```
+
+TypeScript 就知道此时的 `block` 一定是 `ToolUseBlock`，因此可以安全访问：
+
+```ts
+block.id
+block.name
+block.input
+```
+
+最后，再定义请求和响应中会使用到的 Message 类型：
+
+```ts title="src/types.ts"
+export type MessageParam =
+  | {
+      role: 'user'
+      content: string | ToolResultBlock[]
+    }
+  | {
+      role: 'assistant'
+      content: ContentBlock[]
+    }
+
+export type Message = {
+  role: 'assistant'
+  content: ContentBlock[]
+  stop_reason: string | null
+  usage: {
+    input_tokens: number
+    output_tokens: number
+  }
+}
+```
+
+这里有两类消息需要区分：
+MessageParam：我们准备发给 Messages API 的消息参数；
+Message：Messages API 返回给我们的响应消息。
+名字里的 Param 可以理解为 parameter，也就是“请求参数”。
+
+这些类型不是为了完整描述 Anthropic SDK，而只是给当前这次工具往返一个清晰的内部数据模型。从这里开始，我们就不再把 Messages API 当成一团匿名 JSON，而是把它当成几种明确的数据结构来处理。
+
+## 把工具执行结果交还给模型
+
+`getCurrentTime()` 已经能返回字符串，我们还需要处理 ToolResultBlock，并且再发一次 API 请求，告诉模型工具执行的结果。
+
+当前的 `callModel()` 只接收一条 `userInput` 作为 messages。有了工具调用之后，我们需要在 message 中同时带上这次往返的原始问题、模型调用和本地结果，在这里我们把 `callModel()` 的入参改成 `MessageParam[]`：
+
+```ts title="src/cli.ts"
+import type {
+  Message,
+  MessageParam,
+  TextBlock,
+  ToolResultBlock,
+  ToolUseBlock,
+} from './types.js'
+import { getCurrentTime, tools } from './tools.js'
+
+async function callModel(messages: MessageParam[]): Promise<Message> {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': API_KEY!,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1024,
+      messages,
+      tools,
+      tool_choice: {
+        type: 'auto',
+        disable_parallel_tool_use: true,
+      },
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(
+      `API returned ${res.status}: ${await res.text()}`,
+    )
+  }
+
+  return await res.json() as Message
+}
+```
+
+我们将上一章那段筛选文本并打印的代码，提取成 `printMessage()`：
+
+```ts title="src/cli.ts"
+function isTextBlock(block: Message['content'][number]): block is TextBlock {
+  return block.type === 'text'
+}
+
+function isToolUseBlock(block: Message['content'][number]): block is ToolUseBlock {
+  return block.type === 'tool_use'
+}
+
+function printMessage(message: Message): void {
+  const text = message.content.filter(isTextBlock).map((block) => block.text).join('')
+
+  if (text) console.log(`claude> ${text}`)
+
+  console.log(`  · ${message.usage.input_tokens} in / ${message.usage.output_tokens} out · ${message.stop_reason}`)
+}
+```
+
+接着我们需要手动拼接 message 作为 callModel 的入参，实现一个函数做这个事情：
+
+```text
+第一次调用模型
+→ 执行一个 get_current_time
+→ 回传一个 tool_result
+→ 第二次调用模型
+→ 打印最终回答
+```
+
+```ts title="src/cli.ts"
+async function answerOnce(userInput: string): Promise<void> {
+  const messages: MessageParam[] = [
+    {
+      role: 'user',
+      content: userInput,
+    },
+  ]
+  const first = await callModel(messages)
+  printMessage(first)
+
+  const toolUse = first.content.find(isToolUseBlock)
+
+  if (!toolUse) return
+
+  console.log(
+    `tool_use> ${toolUse.name}: ${JSON.stringify(toolUse.input)}`,
+  )
+
+  if (toolUse.name !== 'get_current_time') {
+    throw new Error(`unknown tool: ${toolUse.name}`)
+  }
+
+  const output = getCurrentTime(toolUse.input)
+  console.log(`tool_result> ${output}`)
+
+  const toolResult: ToolResultBlock = {
+    type: 'tool_result',
+    tool_use_id: toolUse.id,
+    content: output,
+  }
+
+  messages.push(
+    {
+      role: 'assistant',
+      content: first.content,
+    },
+    {
+      role: 'user',
+      content: [toolResult],
+    },
+  )
+
+  const second = await callModel(messages)
+  printMessage(second)
+}
+```
+
+`answerOnce()` 通过两次模型请求完成了一次完整的工具调用。第一次请求发出用户的问题。模型没有直接给出答案，而是在响应中返回一个 `tool_use` block，说明它希望调用哪个工具，以及调用工具所需的参数。程序读取这个 block，在本地执行 `getCurrentTime()`，再把执行结果包装成与本次调用对应的 `tool_result`。第二次请求会同时带上模型刚才返回的完整 assistant 消息和这个 `tool_result`。模型看到真实的工具结果后，才生成最终回答。
+
+所以，模型并没有直接执行 getCurrentTime()。它只生成了一份结构化的调用请求；真正调用本地函数并把结果送回模型的是我们的程序。
+
+不过，`answerOnce()` 目前只处理了一次这样的往返。我们已经关闭并行工具调用，所以第一次响应至多包含一个 `tool_use`；程序执行它并再次调用模型，然后函数就结束了。如果第二次响应仍然要求调用工具，程序不会继续处理。
+
+对于查询一个时区的时间，这已经足够。但真正的编码任务通常不会只做一步。模型可能需要同时读取多个文件，看到结果后又决定读取其他文件。
+
+最后，修改 REPL 里临时的代码：
+
+```ts title="src/cli.ts"
+while (true) {
+  const line = (await rl.question('you> ')).trim()
+  if (line === '/exit') break
+  if (line === '') continue
+
+  await answerOnce(line)
+}
+```
+
+## 验证结果
+
+查询一个真实时间：
+
+```text
+model: claude-haiku-4-5 (input /exit to exit)
+you> 上海现在几点？
+  · 386 in / 52 out · tool_use
+tool_use> get_current_time: {"time_zone":"Asia/Shanghai"}
+tool_result> 2026年7月1日星期三 GMT+8 13:30:30
+claude> 上海现在是 **2026年7月1日 星期三 13:30:30**（下午1点30分30秒）。
+  · 478 in / 40 out · end_turn
+```
+
+## 一次工具往返还不够
+
+正如前文所说，在真实的场景中，模型可能需要调用多次工具，因此只要模型还在请求工具，程序就应该继续执行、回传，再问模型下一步。下一章，我们会实现一个最小的 agent loop。
+
+<ChapterMilestone
+  added={[
+    {
+      path: 'src/types.ts',
+      items: [
+        { name: 'ContentBlock', note: '区分 text 与 tool_use' },
+        { name: 'MessageParam', note: '写下含 tool_result 的 message 形状' },
+      ],
+    },
+    {
+      path: 'src/tools.ts',
+      items: [
+        { name: 'tools[]', note: '向模型声明当前时间工具' },
+        { name: 'getCurrentTime()', note: '检查参数并读取指定时区的当前时间' },
+      ],
+    },
+  ]}
+  changed={[
+    {
+      path: 'src/cli.ts',
+      items: [
+        { name: 'callModel(messages)', note: '请求体开始携带 tools' },
+        { name: 'answerOnce()', note: '完成一次 tool_use → tool_result 往返' },
+      ],
+    },
+  ]}
+  summary="现在这个 CLI 能查询指定时区的真实时间，并把本地结果交还给模型；它仍然会跨 prompt 失忆，而且每个任务最多只处理一轮工具调用。"
+/>
