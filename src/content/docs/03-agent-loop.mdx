@@ -1,29 +1,573 @@
 ---
 title: '03 · Agent Loop：循环直到完成'
+description: '把固定的一次工具往返改成 agent loop，再加入 read_file，让模型能够连续读取文件'
 ---
 
-import Callout from '../../components/Callout'
+import ChapterMilestone from '../../components/ChapterMilestone'
 
-<Callout type="info" title="正文撰写中">
-本章正在写作中（全书处于写作前期 spike 周）。下面是本章的固定结构，正文将逐节补全。
-</Callout>
+上一章，我们已经完成了一次完整的工具往返：
 
-## 为什么需要它
+```text
+用户提出任务
+    ↓
+模型返回 tool_use
+    ↓
+程序执行工具
+    ↓
+程序回传 tool_result
+    ↓
+模型生成最终回答
+```
 
-`// 待撰写`
+对于“上海现在几点”这样的任务，一次工具往返已经足够。但如果我们问“先查上海时间，再查纽约时间”，上一章的程序就交不出答案了。
 
-## 原理拆解
+问题不在模型，而在于上一章的客户端替模型做了两个假设：
 
-`// 待撰写`
+1. **轮数写死。** `answerOnce()` 跑完第二次 `callModel()` 就返回。模型完全可以在拿到上海时间之后再提出一个新的 tool_use，但那次响应已经没人处理了——函数走到了固定流程的末尾，程序把一个 stop_reason 仍然是 `tool_use` 的响应当成了最终回答。
+2. **每轮只取一个 tool_use block。** `find()` 只返回第一个。上一章我们把 `disable_parallel_tool_use` 置为 true，主动关掉了并行工具调用，所以这个假设当时没有暴露出来；一旦允许模型在同一次响应里提出多个调用，被漏掉的那些就再也没有机会执行。
 
-## 动手实现
+一个任务究竟需要调用几个工具、分几轮调用，都不应该由客户端提前假设。这一章我们把两个假设一起去掉：轮数交给模型决定，一轮里的所有 tool_use 全部执行。
 
-`// 待撰写`
+于是，把一次工具往返改成循环之后，我们需要回答另一个问题：
 
-## 跑起来看效果
+这个循环什么时候结束？
 
-`// 待撰写`
+Anthropic Messages API 已经在每次响应中提供了这个信息：`stop_reason`，它表示模型这一次为什么停止生成。前面两章的输出里，我们已经见过它的两个取值，当前这个最小 agent loop 也先只关心它们：
 
-## 练习与延伸
+- `tool_use`：模型停下来等待客户端执行工具，任务还没有完成；
+- `end_turn`：模型已经自然结束这一轮回答，当前任务完成。
 
-`// 待撰写`
+所以 agent loop 的控制条件实际上可以写成：
+
+```text
+tool_use → 执行工具 → 继续循环
+end_turn → 退出循环
+```
+
+客户端不再提前规定任务需要几次调用，而是根据模型每一轮的 stop_reason 决定继续还是停止。
+
+## 实现 agent loop
+
+上一章中，函数 answerOnce() 做了很多事情，它直接处理用户输入、拼接 message、调用模型、读取 tool_use 以及执行本地工具并向模型返回执行结果。接下来我们需要将该函数中不同的职责拆解出来，让 cli.ts 负责人与程序之间的交互，也就是处理用户输入输出以及向请求中追加 user message；将工具往返变成可以重复执行的 agent loop 放在 agent.ts 中。
+
+修改 cli.ts，移除函数 answerOnce()，改为调用 runAgent()。runAgent() 是 agent loop 的核心，我们稍后实现它。
+
+这里还有一个重要变化：messages 现在由 cli.ts 创建，并且放在 REPL 循环外面，所以它的生命周期覆盖了整个 CLI 会话。
+
+answerOnce() 每次执行都会重新创建一份 messages。函数结束后，这份消息历史也就不会再被下一次用户输入使用，因此前一句和后一句之间没有共享上下文。
+
+现在不同了。只要 CLI 进程还在运行，messages 就会一直存在。每次用户输入，cli.ts 都会把新的 user message 追加进去；随后 runAgent() 会拿到指向数组对象的引用值，因此，当 runAgent() 使用 push() 向数组中添加消息时，修改的是这个共同指向的数组本身。runAgent() 会继续把模型返回的 assistant message 和工具执行结果追加到同一个数组中，等 runAgent() 返回后，cli.ts 持有的 messages 也已经包含了这些新消息。下一次用户再输入时，程序不会重新创建消息历史，而是在原有内容后面继续追加。
+
+因此，模型之所以能够“记住”上一轮对话，并不是因为 Messages API 在服务端保存了会话，而是因为客户端一直保存着完整的 messages，并在每次请求时重新发送给模型。
+
+```ts title="src/cli.ts"
+import readline from 'node:readline/promises'
+import type { MessageParam } from './types.js'
+import { runAgent } from './agent.js'
+
+const MODEL = 'claude-haiku-4-5'
+
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.error('Please set your ANTHROPIC_API_KEY')
+  process.exit(1)
+}
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+})
+console.log(`model: ${MODEL} (input /exit to exit)`)
+
+const messages: MessageParam[] = []
+
+while (true) {
+  const line = (await rl.question('you> ')).trim()
+  if (line === '/exit') break
+  if (line === '') continue
+
+  messages.push({
+    role: 'user',
+    content: line,
+  })
+
+  await runAgent(messages)
+}
+
+rl.close()
+```
+
+这里 cli.ts 只留下了启动检查和那行 banner 里用到的 MODEL，真正发请求所需要的 API_URL、API_KEY 都会跟着 callModel() 一起搬到 agent.ts。两个文件各留一份 MODEL 常量是暂时的重复，等后面引入配置模块时再收拢。
+
+创建 `src/agent.ts`，在实现 runAgent() 之前，我们先从原先的 cli.ts 中迁移部分 helper 函数过来：
+
+```ts title="src/agent.ts"
+import type {
+  Message,
+  MessageParam,
+  TextBlock,
+  ToolResultBlock,
+  ToolUseBlock,
+} from './types.js'
+import { runTool, tools } from './tools.js'
+
+const API_URL = 'https://api.anthropic.com/v1/messages'
+const MODEL = 'claude-haiku-4-5'
+const API_KEY = process.env.ANTHROPIC_API_KEY
+
+async function callModel(messages: MessageParam[]): Promise<Message> {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': API_KEY!,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1024,
+      messages,
+      tools,
+      tool_choice: {
+        type: 'auto',
+        disable_parallel_tool_use: false,
+      },
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(
+      `API returned ${res.status}: ${await res.text()}`,
+    )
+  }
+
+  return await res.json() as Message
+}
+
+function isTextBlock(block: Message['content'][number]): block is TextBlock {
+  return block.type === 'text'
+}
+
+function isToolUseBlock(block: Message['content'][number]): block is ToolUseBlock {
+  return block.type === 'tool_use'
+}
+
+function printMessage(message: Message): void {
+  const text = message.content
+    .filter(isTextBlock)
+    .map((block) => block.text)
+    .join('')
+
+  if (text) {
+    console.log(`claude> ${text}`)
+  }
+
+  console.log(`  · ${message.usage.input_tokens} in / ${message.usage.output_tokens} out · ${message.stop_reason}`)
+}
+```
+
+这些代码和上一章有一点变化，我们把 disable_parallel_tool_use 置为 false，现在 Claude 可以在一次响应里返回多个 tool_use block，实际上也可以直接不写这个字段，因为 Anthropic 当前默认允许 parallel tool use。怎么把它们全部执行掉，留到 runAgent() 里解决。
+
+import 里的 ToolResultBlock 和 runTool 现在还没用上，它们属于马上要写的 runAgent()，先一起写好。
+
+把原来函数 answerOnce() 中调用工具的能力提取出来封装到 tools.ts 中，根据工具名和输入来调用工具，返回对应的结果，这层映射属于工具模块，而不是 agent loop。agent.ts 只需要知道“按这个名字执行工具”，不应该知道每个工具分别由哪个本地函数实现。
+
+因此，把原来的判断移进 tools.ts，形成统一的执行入口：
+
+```ts title="src/tools.ts"
+export async function runTool(name: string, input: unknown): Promise<string> {
+  if (name === 'get_current_time') {
+    return getCurrentTime(input)
+  }
+
+  throw new Error(`unknown tool: ${name}`)
+}
+```
+
+现在只有一个工具，这层封装看起来还很薄。但本章马上会加入 read_file：到时只需要在 tools.ts 中增加一个分支，runAgent() 不需要跟着认识新的本地函数。
+
+实现 runAgent() ：
+
+```ts title="src/agent.ts"
+export async function runAgent(messages: MessageParam[]): Promise<void> {
+  while (true) {
+    const message = await callModel(messages)
+    printMessage(message)
+
+    messages.push({
+      role: 'assistant',
+      content: message.content,
+    })
+
+    if (message.stop_reason === 'end_turn') {
+      return
+    }
+
+    if (message.stop_reason !== 'tool_use') {
+      throw new Error(
+        `unexpected stop reason: ${message.stop_reason}`,
+      )
+    }
+
+    const toolUses = message.content.filter(isToolUseBlock)
+
+    if (toolUses.length === 0) {
+      throw new Error(
+        'stop_reason is tool_use but no tool_use block was found',
+      )
+    }
+
+    const toolResults: ToolResultBlock[] = []
+
+    for (const toolUse of toolUses) {
+      console.log(
+        `tool_use> ${toolUse.name}: ${JSON.stringify(toolUse.input)}`,
+      )
+
+      const output = await runTool(
+        toolUse.name,
+        toolUse.input,
+      )
+
+      console.log(
+        `tool_result> ${output}`,
+      )
+
+      const toolResult: ToolResultBlock = {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: output,
+      }
+
+      toolResults.push(toolResult)
+    }
+    messages.push({
+      role: 'user',
+      content: toolResults,
+    })
+  }
+}
+```
+
+
+最外层的 while (true) 表示：客户端不知道完成任务需要多少步，所以不再提前规定循环次数。
+
+当前版本没有轮数上限。它明确退出的正常路径只有一个：模型返回 end_turn。如果模型持续请求工具，循环也会持续运行。这是这一版暂时保留的限制。
+
+每次收到模型响应后，我们先把 assistant message 放进历史，再检查 stop_reason。这个顺序不能反过来。无论模型返回的是最终回答还是工具调用，这次输出都属于消息历史。即使 stop_reason 已经是 end_turn，最终回答也要保留下来，否则用户输入下一句话时，模型看不到自己刚才回答过什么。并且保存的也是整个 message.content 数组，而不只是其中的 text。tool_use block 必须原样回到下一次请求里，随后返回的 tool_result 才能通过 tool_use_id 找到它对应的调用。
+
+接下来，两段代码分别解决开头的两个问题：
+
+```ts
+if (message.stop_reason === 'end_turn') {
+  return
+}
+```
+
+stop_reason 决定循环继续还是结束。
+
+```ts
+const toolUses = message.content.filter(isToolUseBlock)
+```
+
+filter() 收集这一轮的全部 tool_use，避免像上一章的 find() 一样只执行第一个。模型可以在同一次响应中返回多个调用，但当前实现仍然用 for...of 和 await 顺序执行它们。准确地说，我们现在能够接住 parallel tool use 的消息格式，还没有并发执行本地函数。这是当前版本的选择，不是 API 的限制。执行完成后，所有结果被放进同一条 user message。
+
+最后，未知 stop_reason 直接抛错，我们暂时先不关注其他的场景。
+
+```text
+调用模型
+→ 保存模型输出
+→ 执行模型请求的工具
+→ 保存工具结果
+→ 带着完整历史再次调用模型
+→ 直到模型返回 end_turn
+```
+
+我们再次运行程序：
+
+```text
+➜  code git:(main) ✗ npm run dev
+
+> code@1.0.0 dev
+> tsx --env-file-if-exists=.env src/cli.ts
+
+model: claude-haiku-4-5 (input /exit to exit)
+you> 先查上海时间，再查纽约时间
+claude> 我来帮你查上海和纽约的当前时间。
+  · 601 in / 123 out · tool_use
+tool_use> get_current_time: {"time_zone":"Asia/Shanghai"}
+tool_result> 2026年7月1日星期三 GMT+8 20:15:30
+tool_use> get_current_time: {"time_zone":"America/New_York"}
+tool_result> 2026年7月1日星期三 GMT-4 08:15:30
+claude> 好的，查询结果如下：
+
+**上海时间：** 2026年7月1日 星期三 20:15:30 (GMT+8)
+
+**纽约时间：** 2026年7月1日 星期三 08:15:30 (GMT-4)
+
+目前上海和纽约相差12小时，上海时间比纽约快12小时。
+  · 831 in / 106 out · end_turn
+```
+
+开头留下的两个问题都解决了：模型可以把任务拆成任意轮，也可以在一轮里提出多个工具调用，客户端不会提前结束或漏掉其中一个。
+
+不过，我们目前证明的只是“同一个时间工具可以连续调用多次”。第一章让模型 review 本地文件的请求依然做不到，模型还是看不到这些文件。接下来，我们给这个 loop 加入第二个工具：read_file。
+
+## 加入 `read_file`
+
+先在 `src/tools.ts` 的 `tools` 中加入新的工具定义：
+
+```ts title="src/tools.ts"
+{
+  name: 'read_file',
+  description: 'Read a UTF-8 text file from disk.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description: 'Path to the file',
+      },
+    },
+    required: ['path'],
+  },
+},
+```
+
+现在模型知道自己拥有两个工具：
+
+```text
+get_current_time
+read_file
+```
+
+## 实现 `read_file`
+
+在 `src/tools.ts` 顶部导入 Node.js 自带的文件 API：
+
+```ts title="src/tools.ts"
+import { readFile } from 'node:fs/promises'
+
+export async function readFileTool(input: unknown): Promise<string> {
+  const args = asObject(input)
+
+  if (typeof args.path !== 'string') {
+    throw new Error('path must be a string')
+  }
+
+  return await readFile(args.path, 'utf8')
+}
+```
+
+这里和上一章的 `getCurrentTime()` 使用相同的处理方式。`tool_use.input` 仍然是 `unknown`，所以先通过 `asObject(input)` 确认它是对象，再确认 `path` 是否是 string 类型，最后才把它交给 `readFile(args.path, 'utf8')` 读取文件。`'utf8'` 表示把文件内容直接解码成字符串，因此这个工具最终返回 `Promise<string>`。
+
+需要注意，`input_schema` 中对 `path` 的描述是在告诉模型应该怎样生成参数，并不会自动限制 Node.js 实际可以访问哪些路径。
+
+更新 runTool() 函数：
+
+```ts title="src/tools.ts"
+export async function runTool(name: string, input: unknown): Promise<string> {
+  if (name === 'get_current_time') {
+    return getCurrentTime(input)
+  }
+
+  if (name === 'read_file') {
+    return await readFileTool(input)
+  }
+
+  throw new Error(`unknown tool: ${name}`)
+}
+```
+
+尝试使用一下工具 `read_file` ：
+
+```text
+model: claude-haiku-4-5 (input /exit to exit)
+you> 读 agent.ts，告诉我 runAgent() 是怎么运行的。
+claude> 我来帮你读取 agent.ts 文件。
+  · 676 in / 72 out · tool_use
+tool_use> read_file: {"path":"agent.ts"}
+node:internal/fs/promises:642
+  return new FileHandle(await PromisePrototypeThen(
+                        ^
+
+Error: ENOENT: no such file or directory, open 'agent.ts'
+    at async open (node:internal/fs/promises:642:25)
+    at async readFile (node:internal/fs/promises:1279:14)
+    at async readFileTool (/code/src/tools.ts:73:10)
+    at async runTool (/code/src/tools.ts:82:12)
+    at async runAgent (/code/src/agent.ts:99:22)
+    at async <anonymous> (/code/src/cli.ts:30:3) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'agent.ts'
+}
+
+Node.js v24.11.1
+```
+
+程序直接退出，并且报错找不到文件或文件夹。检查刚才我们的 read_file 工具实现以及模型的响应，我们能发现几个问题：
+
+1. 模型请求的参数是 `read_file: {"path":"agent.ts"}`，这个路径是模型猜的，而且没有基准：模型压根不知道 cwd 是什么、目录里有什么文件，它在盲猜；而我们也从没定义过 path 相对于谁。在这个案例中，模型直接使用文件名访问，而 read_file 工具函数也没有考虑这种情况，直接在进程启动目录下执行了 readFile 导致 ERROR。这个问题需要工作目录抽象 + 把环境注入 system prompt 的方式来解决，后面讲系统提示词与环境感知时会专门处理。
+2. 我们没有主动处理失败，导致工具执行出错整个进程直接退出。这一条本章就解决。
+3. 没有路径边界、没有大小限制，这导致模型可能读取密钥造成安全事故，或者读取超大文件直接撑爆上下文。这两件事分别属于权限边界和输出截断，本章先记下，留到后面的章节。
+
+在这里我们先优化工具定义，告诉模型，read_file 工具当前只处理相对路径。
+
+```ts title="src/tools.ts"
+{
+  name: 'read_file',
+  description: 'Read a UTF-8 text file from disk.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description: 'File path relative to the current working directory, for example "src/index.ts".',
+      },
+    },
+    required: ['path'],
+  },
+},
+```
+
+然后给 ToolResultBlock 类型加上一个可选的标志位，用来显式地告诉模型这是工具报错。如果不写 `is_error: true`，API 本身通常仍然接受原先的协议结构，只是这条结果会被当成一次正常的工具返回，模型只能靠 "ENOENT..." 这段文字自己判断它是不是错误：
+
+```ts title="src/types.ts"
+export type ToolResultBlock = {
+  type: 'tool_result'
+  tool_use_id: string
+  content: string
+  is_error?: boolean
+}
+```
+
+Anthropic 官方对工具错误的推荐方式就是使用 `is_error: true` 来标记该次 tool call 失败。
+
+然后给 runAgent() 中工具调用的部分加上 try/catch：
+
+```ts title="src/agent.ts"
+      let toolResult: ToolResultBlock
+
+      try {
+        const output = await runTool(toolUse.name, toolUse.input)
+
+        console.log(`tool_result> ${output}`)
+
+        toolResult = {
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: output,
+        }
+      } catch (error) {
+        const errMessage = error instanceof Error ? error.message : String(error)
+        console.log(`tool_error> ${error}`)
+
+        toolResult = {
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: errMessage,
+          is_error: true,
+        }
+      }
+
+      toolResults.push(toolResult)
+```
+
+让我们再跑一次试试：
+
+```text
+model: claude-haiku-4-5 (input /exit to exit)
+you> 读 agent.ts，告诉我 runAgent() 是怎么运行的。
+claude> 我来为你读取 agent.ts 文件，然后分析 runAgent() 的运行方式。
+  · 690 in / 86 out · tool_use
+tool_use> read_file: {"path":"agent.ts"}
+tool_error> Error: ENOENT: no such file or directory, open 'agent.ts'
+claude> 文件不在当前目录下。让我尝试查找它可能的位置：
+  · 814 in / 81 out · tool_use
+tool_use> read_file: {"path":"./agent.ts"}
+tool_error> Error: ENOENT: no such file or directory, open './agent.ts'
+claude> 看来 agent.ts 文件不在当前工作目录中。你能提供以下信息帮助我定位文件吗？
+
+1. **agent.ts 的相对路径是什么？** (例如: `src/agent.ts`, `lib/agent.ts` 等)
+2. **或者告诉我当前项目的目录结构？**
+
+或者，你也可以直接粘贴 agent.ts 的代码内容给我，这样我可以直接分析 runAgent() 函数的运行原理。
+  · 932 in / 150 out · end_turn
+```
+
+虽然模型还是读不到文件，但是模型经过了两次尝试，没有直接退出，并且要求了更多的信息。我们告诉模型需要的信息后，模型可以得到正确的答案：
+
+```text
+you> agent.ts 的相对路径是 src/agent.ts。
+claude> 我来帮你读取这个文件。
+  · 693 in / 71 out · tool_use
+tool_use> read_file: {"path":"src/agent.ts"}
+tool_result> (···省略···)
+claude> 好的，我已经读了 `src/agent.ts` 文件。让我为你解释 `runAgent()` 的运行流程：
+(···省略···)
+### 简言之
+**它是一个 Agent 循环**：模型 → 思考 → 如需调用工具则调用 → 反馈结果 → 重复，直到对话结束。
+  · 1759 in / 556 out · end_turn
+```
+
+接下来我们再试试让模型一次读多个文件：
+
+```text
+you> 读一下 src/cli.ts 和 package.json，告诉我项目怎么启动？
+claude> 我来帮你读一下这两个文件。
+  · 696 in / 111 out · tool_use
+tool_use> read_file: {"path":"src/cli.ts"}
+tool_result> (···省略···)
+tool_use> read_file: {"path":"package.json"}
+tool_result> (···省略···)
+claude> 根据这两个文件，这是一个基于Claude AI的CLI应用。以下是启动方式：
+(···省略···)
+### 建议操作步骤
+1. 确保已安装依赖：`npm install`
+2. 创建 `.env` 文件并设置：`ANTHROPIC_API_KEY=your_api_key_here`
+3. 运行：`npm run dev`
+  · 1252 in / 406 out · end_turn
+```
+
+上面的输出我们手动省略了部分内容。可以看到，模型在同一轮里调用了两次工具，拿到两个结果后才给出结论。
+
+下一章，我们继续给它加入行动能力。
+
+<ChapterMilestone
+  added={[
+    {
+      path: 'src/agent.ts',
+      items: [
+        { name: 'runAgent(messages)', note: '按 stop_reason 循环调用模型，直到 end_turn 才返回' },
+        { name: 'callModel()', note: '从 cli.ts 搬来，请求体携带 tools' },
+        { name: 'printMessage()', note: '打印文本、工具调用与本轮 token 消耗' },
+        { name: 'isTextBlock() / isToolUseBlock()', note: '用类型守卫从 content 中挑出各类块' },
+      ],
+    },
+    {
+      path: 'src/tools.ts',
+      items: [
+        { name: 'read_file', note: '声明第二个工具，参数为相对于工作目录的路径' },
+        { name: 'readFileTool()', note: '校验 path 后按 UTF-8 读取文件' },
+        { name: 'runTool(name, input)', note: '按名字分发，让 runAgent() 不必认识每个本地函数' },
+      ],
+    },
+  ]}
+  changed={[
+    {
+      path: 'src/cli.ts',
+      items: [
+        { name: 'messages', note: '移出 REPL 循环，对话历史开始跨 prompt 累积' },
+        { name: 'REPL 循环', note: '每轮只把用户输入推入 messages，其余交给 runAgent()' },
+      ],
+    },
+    {
+      path: 'src/types.ts',
+      items: [
+        { name: 'ToolResultBlock', note: '增加 is_error，用于把工具失败标记给模型' },
+      ],
+    },
+  ]}
+  summary="现在这个 CLI 能连续调用工具、读取本地文件，还记得住上一轮对话；工具失败会作为消息回传而不再让进程退出。但它只能读不能写，也不知道自己在哪个目录、周围有什么文件——路径还得你亲口告诉它。"
+/>
