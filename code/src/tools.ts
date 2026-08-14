@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises'
+
 export const tools = [
   {
     name: 'get_current_time',
@@ -11,6 +13,20 @@ export const tools = [
         },
       },
       required: ['time_zone'],
+    },
+  },
+  {
+    name: 'read_file',
+    description: 'Read a UTF-8 text file from disk.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'File path relative to the current working directory, for example "src/index.ts".',
+        },
+      },
+      required: ['path'],
     },
   },
 ]
@@ -45,4 +61,26 @@ export function getCurrentTime(input: unknown): string {
   })
 
   return formatter.format(now)
+}
+
+export async function readFileTool(input: unknown): Promise<string> {
+  const args = asObject(input)
+
+  if (typeof args.path !== 'string') {
+    throw new Error('path must be a string')
+  }
+
+  return await readFile(args.path, 'utf8')
+}
+
+export async function runTool(name: string, input: unknown): Promise<string> {
+  if (name === 'get_current_time') {
+    return getCurrentTime(input)
+  }
+
+  if (name === 'read_file') {
+    return await readFileTool(input)
+  }
+
+  throw new Error(`unknown tool: ${name}`)
 }
