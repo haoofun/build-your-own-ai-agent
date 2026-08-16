@@ -1,29 +1,555 @@
 ---
-title: '04 · 写与改：Write、Edit 与 diff'
+title: '04 · 本地工具：写、改、搜、跑'
+description: '加入 write_file、edit_file、grep 和 bash，让 agent 能找到代码、精确修改，并用测试验证结果'
 ---
 
 import Callout from '../../components/Callout'
+import ChapterMilestone from '../../components/ChapterMilestone'
 
-<Callout type="info" title="正文撰写中">
-本章正在写作中（全书处于写作前期 spike 周）。下面是本章的固定结构，正文将逐节补全。
+上一章中，我们让模型可以做到读取本地文件，在真实的使用场景中，agent 不仅能读取文件，还可以新增、修改、搜索文件，执行命令。在这一章我们会把 agent 需要的四个基础动作补齐：
+
+- `write_file` 创建或完整覆盖文件。
+- `edit_file` 精确替换现有文件中的一段文本。
+- `grep` 在不知道文件名时搜索代码。
+- `bash` 运行测试和其他 shell 命令。
+
+## 新增工具定义
+
+修改 `src/tools.ts`，把四份定义追加到 `tools` 数组。
+
+```ts title="src/tools.ts"
+{
+  name: 'write_file',
+  description: 'Create or overwrite a UTF-8 text file.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description: 'Path to the file, relative to the current working directory.',
+      },
+      content: {
+        type: 'string',
+        description: 'The complete content to write.',
+      },
+    },
+    required: ['path', 'content'],
+  },
+},
+{
+  name: 'edit_file',
+  description: 'Replace one exact, unique string in a UTF-8 text file.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      path: {
+        type: 'string',
+        description: 'Path to the file to edit.',
+      },
+      old_string: {
+        type: 'string',
+        description: 'Exact text to replace. It must appear exactly once, including whitespace.',
+      },
+      new_string: {
+        type: 'string',
+        description: 'Replacement text.',
+      },
+    },
+    required: ['path', 'old_string', 'new_string'],
+  },
+},
+{
+  name: 'grep',
+  description: 'Search files recursively with a regular expression. Returns file paths, line numbers, and matching lines.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      pattern: {
+        type: 'string',
+        description: 'Regular expression to search for.',
+      },
+      path: {
+        type: 'string',
+        description: 'File or directory to search.',
+      },
+    },
+    required: ['pattern', 'path'],
+  },
+},
+{
+  name: 'bash',
+  description: 'Run a shell command and return its exit code, stdout, and stderr. Each call starts a new shell.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      command: {
+        type: 'string',
+        description: 'Shell command to execute. A cd command does not persist into later calls.',
+      },
+    },
+    required: ['command'],
+  },
+},
+```
+
+`write_file` 用来更新整个文件，不是要追加某一小段。我们在工具描述必须把这个语义说清楚，否则模型可能拿一段补丁去覆盖整个文件。
+`edit_file` 用来更新文件中的部分文本，这里不用行号，也不让模型生成 unified diff。模型只需要提供旧文本和新文本。
+`grep` 用来帮助模型搜索文件路径，在上一章中，如果模型在调用 `read_file` 没有得到期望的结果，`grep` 可以帮它准确的定位文件路径，得到正确的参数后重新调用工具。
+`bash` 用来执行命令，工具定义描述中最后一句描述很重要，"Each call starts a new shell."，这代表每次 `bash` 调用都会启动新的 shell，每次执行命令的环境都是独立的。
+
+## 新增工具函数
+
+新增一个 helper 函数 `stringField()` 提取出工具函数中校验字符串参数的代码
+
+```ts title="src/tools.ts"
+function stringField(input: ToolInput, key: string): string {
+  const value = input[key]
+
+  if (typeof value !== 'string') {
+    throw new Error(`${key} must be a string`)
+  }
+
+  return value
+}
+```
+
+我们使用这个函数的方式如下：
+
+```ts title="src/tools.ts"
+export async function readFileTool(input: unknown): Promise<string> {
+  const args = asObject(input)
+  const path = stringField(args, "path")
+
+  return await readFile(path, 'utf8')
+}
+```
+
+新增 import：
+
+```ts title="src/tools.ts"
+import { readFile, writeFile } from 'node:fs/promises'
+```
+
+`write_file` 的执行部分很短：
+
+```ts title="src/tools.ts"
+export async function writeFileTool(input: unknown): Promise<string> {
+  const args = asObject(input)
+  const path = stringField(args, 'path')
+  const content = stringField(args, 'content')
+
+  await writeFile(path, content, 'utf8')
+
+  return `wrote ${Buffer.byteLength(content, 'utf8')} bytes to ${path}`
+}
+```
+
+成功时也要返回有内容的结果。模型看不到 `await writeFile(...)` 是否成功，只能看到我们放进 `tool_result` 的字符串。
+
+`edit_file` 先读取文件，再进行边界情况的检查，当 oldString 为空、oldString 和 newString相同时抛出异常，计算 oldString 出现的次数，当出现 0 次或者大于 1 次时抛出异常，要求模型给出更准确的参数，或者扩展上下文给出唯一的 oldString。
+
+```ts title="src/tools.ts"
+export async function editFileTool(input: unknown): Promise<string> {
+  const args = asObject(input)
+  const path = stringField(args, 'path')
+  const oldString = stringField(args, 'old_string')
+  const newString = stringField(args, 'new_string')
+
+  if (oldString === '') {
+    throw new Error('old_string must not be empty')
+  }
+
+  if (oldString === newString) {
+    throw new Error(
+      'old_string and new_string must be different',
+    )
+  }
+
+  const content = await readFile(path, 'utf8')
+  const count = content.split(oldString).length - 1
+
+  if (count === 0) {
+    throw new Error(
+      `old_string was not found in ${path}; read the file again`,
+    )
+  }
+
+  if (count > 1) {
+    throw new Error(
+      `old_string appears ${count} times in ${path}; include more surrounding text`,
+    )
+  }
+
+  const next = content.replace(
+    oldString,
+    () => newString,
+  )
+
+  await writeFile(path, next, 'utf8')
+
+  return `edited ${path}`
+}
+```
+
+当模型需要批量修改时，`edit_file` 工具也能发挥作用，模型可以为每一处修改分别向外扩上下文，构造出 5 个各自唯一的 old_string 然后调用工具，这是因为 agent loop 本身就是重复机制，所以工具不需要批量版本。
+
+这里没有直接将 newString 作为第二个入参，而是使用了箭头函数作为入参，这是为了避免 newString 可能出现的特殊字符比如 `$&`、`$`` 被 JS 当作一个替换模板解析
+
+```ts
+content.replace(oldString, () => newString)
+```
+
+在实现 `bash` 和 `grep` 工具时，我们需要使用到 Node 提供的 node:child_process 模块其中的 exec() 和 execFile() 函数。
+
+```ts title="src/tools.ts"
+import {
+  exec,
+  execFile,
+} from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
+```
+
+grep、npm、git 都不是 JavaScript 函数，而是操作系统里的其他程序。为了执行这些命令，我们需要 让 Node 启动另一个程序，等待它执行结束，然后把执行结果拿回来。exec() 和 execFile() 可以做这个事情。
+exec() 接收一整条命令字符串，Node 会把这条命令交给 shell，由 shell 解析并执行。而 execFile() 会直接告诉 Node 要执行什么程序，以及分别给它哪些参数。因此对于 grepTool 工具，我们可以直接使用 execFile() ，这样也可以避免处理 shell 解析特殊字符导致的歧义。而 bashTool 必须使用 exec() ，这样可以更灵活的使用 npm、git 等命令行工具，这两个工具函数同时引入不是重复。
+exec() 和 execFile() 是 Node 较早期的 callback 风格 API：命令执行完成后，它们通过回调函数交回结果。它们本身已经是异步的，并不需要 promisify() 才能并发执行。这里使用 promisify()，只是把 callback 接口转换成 Promise 接口，让我们可以继续使用项目中统一的 async/await 写法。
+
+程序调用都会返回 `stdout`、`stderr`、`exit code`，例如：
+
+```bash
+node -e "console.log('hello')"; echo "exit=$?"
+hello
+exit=0
+```
+
+stdout 代表程序的正常输出。程序结束时还会给操作系统一个 exit code，表示自己执行得怎么样。stderr 用于输出错误、警告等信息。
+对于大多数命令或者程序来说，退出码为 0 代表执行成功，为 1 代表执行失败，但是对于我们接下来要实现的 grep 工具来说，当没有查找到期望的结果，也会返回 1，但这不代表 grep 执行失败了。
+Node 的 `exec()` 回调会把非零 exit code 放进 error。promisify 后遇到非零退出会返回 rejected Promise，并把 stdout、stderr 附在 error 上，但是问题是，TypeScript 默认不知道 error 有 stdout、stderr 这些字段，如果我们直接抛出 error，那么可能 grep 这类命令就会因为语义上的区别丢失有效的返回信息，因此我们需要补充一个类型：
+
+```ts title="src/types.ts"
+type ProcessError = Error & {
+  code?: number | string
+  stdout?: string
+  stderr?: string
+}
+```
+
+这是一个由 Node 子进程 API 产生的错误对象，它除了 Error 自带的信息，还携带了进程执行结果。
+
+接下来统一一下命令结果的文本格式：
+
+```ts title="src/tools.ts"
+function formatCommandResult(
+  code: number | string,
+  stdout: string,
+  stderr: string,
+): string {
+  return [
+    `exit code: ${code}`,
+    '',
+    'stdout:',
+    stdout || '(empty)',
+    '',
+    'stderr:',
+    stderr || '(empty)',
+  ].join('\n')
+}
+```
+
+选择使用 `execFile()`，把参数逐项交给 `grep` 可执行文件：
+
+```ts title="src/tools.ts"
+import type { ProcessError } from './types.js'
+
+export async function grepTool(input: unknown): Promise<string> {
+  const args = asObject(input)
+  const pattern = stringField(args, 'pattern')
+  const path = stringField(args, 'path')
+
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      'grep',
+      [
+        '-RInE',
+        '--exclude-dir=.git',
+        '--exclude-dir=node_modules',
+        '--',
+        pattern,
+        path,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      },
+    )
+
+    return stdout || stderr || 'No matches found.'
+  } catch (error) {
+    const failure = error as ProcessError
+
+    if (failure.code === 1) {
+      return `No matches found for ${JSON.stringify(pattern)} in ${path}.`
+    }
+
+    return formatCommandResult(
+      failure.code ?? 'unknown',
+      failure.stdout ?? '',
+      failure.stderr ?? failure.message,
+    )
+  }
+}
+```
+
+然后实现 `bashTool()`：
+
+```ts title="src/tools.ts"
+export async function bashTool(input: unknown): Promise<string> {
+  const args = asObject(input)
+  const command = stringField(args, 'command')
+
+  try {
+    const { stdout, stderr } = await execAsync(
+      command,
+      {
+        encoding: 'utf8',
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      },
+    )
+
+    return formatCommandResult(0, stdout, stderr)
+  } catch (error) {
+    const failure = error as ProcessError
+
+    return formatCommandResult(
+      failure.code ?? 'unknown',
+      failure.stdout ?? '',
+      failure.stderr ?? failure.message,
+    )
+  }
+}
+```
+
+
+这里的 try/catch 是为了保证信息不丢失，如果我们只在 agent loop 中捕获错误，那么可能模型还是不知道工具执行的准确结果。所以 `grepTool()` 和 `bashTool()` 仍然把退出码、stdout 和 stderr 原样交给模型。
+
+`timeout` 和 `maxBuffer` 先给子进程两个硬上限，避免一个永不退出或疯狂输出的命令直接拖垮当前进程。
+
+<Callout type="warning" title="这版 agent 可以执行任意 shell 命令">
+现在没有权限确认，也没有 sandbox。只在你愿意让它读写和执行命令的练习目录中运行，不要把它指向重要仓库。
 </Callout>
 
-## 为什么需要它
+## 更新派发函数
 
-`// 待撰写`
+我们已经有了工具定义和工具函数实现，接下来需要修改 runTool()，加一个工具时，定义和派发必须同时修改，本章一共新增了四个工具，同一份对应关系在两个位置维护，这是完全的负担，我们可以把定义和实现放在一起。
 
-## 原理拆解
+新增工具类型：
 
-`// 待撰写`
+```ts title="src/types.ts"
+export type ToolDefinition = {
+  name: string
+  description: string
+  input_schema: {
+    type: 'object'
+    properties: Record<string, {
+      type: 'string'
+      description: string
+    }>
+    required: string[]
+  }
+}
 
-## 动手实现
+export type Tool = {
+  definition: ToolDefinition
+  execute(input: unknown): string | Promise<string>
+}
 
-`// 待撰写`
+```
 
-## 跑起来看效果
+回到 `src/tools.ts`，把同一个工具的定义和执行函数放进一个对象：
 
-`// 待撰写`
+```ts title="src/tools.ts"
+import type { ProcessError, Tool } from './types.js'
 
-## 练习与延伸
+export const tools: Tool[] = [
+  {
+    definition: {
+      name: 'read_file',
+      description: 'Read a UTF-8 text file from disk.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Path to the file, relative to the current working directory.',
+          },
+        },
+        required: ['path'],
+      },
+    },
+    execute: readFileTool,
+  },
+  // 其余工具也各自连接对应的执行函数
+]
+```
 
-`// 待撰写`
+`execute()` 同时接受同步和异步函数，所以现在的 `getCurrentTime()` 和文件、命令工具都可以直接放进去。
+
+模型调用时只需要看工具定义。因此需要更新 `callModel()` 中的请求体：
+
+```ts title="src/agent.ts"
+tools: tools.map((tool) => tool.definition),
+```
+
+执行时则从 tools 对象中找到对应工具并执行，修改 for 循环中执行 runTool() 部分的代码：
+
+```ts title="src/agent.ts"
+const tool = tools.find(
+  (candidate) =>
+    candidate.definition.name === toolUse.name,
+)
+
+if (!tool) {
+  throw new Error(`unknown tool: ${toolUse.name}`)
+}
+
+try {
+  const output = await tool.execute(toolUse.input)
+  // 替换原来的  const output = await runTool(toolUse.name, toolUse.input)
+```
+
+原来的 `runTool()` 可以删掉。`runAgent()` 仍然不需要知道 `read_file` 是读文件、`bash` 会开子进程；它只处理共同协议：收到 `tool_use`，找到同名 `Tool`，再把执行结果包装成 `tool_result`。
+
+## 丢给它一个失败的测试
+
+本章代码里带了一个练习项目：
+
+```text
+practice/cart/
+├── src/
+│   └── cart.js
+└── test/
+    └── cart.test.js
+```
+
+完整的练习项目在仓库的 [`code/practice/cart/`](https://github.com/haoofun/build-your-own-ai-agent/tree/main/code/practice/cart)，跟着写的话直接从那里取。
+
+测试就是规格：
+
+```js title="practice/cart/test/cart.test.js"
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
+import { cartTotal } from '../src/cart.js'
+import { formatPrice } from '../src/format.js'
+
+test('多件商品合计', () => {
+  const items = [
+    { name: '键盘', price: 299, qty: 1 },
+    { name: '鼠标', price: 99, qty: 2 },
+  ]
+
+  assert.equal(cartTotal(items), 497)
+})
+
+test('空购物车合计为 0', () => {
+  assert.equal(cartTotal([]), 0)
+})
+
+test('价格格式化保留两位小数', () => {
+  assert.equal(formatPrice(1234.5), '¥1234.50')
+})
+```
+
+`src/` 下的实现长什么样，我们先不看——agent 也一样。
+
+从 `code/` 启动它，不告诉它文件在哪，也不告诉它拿什么验证：
+
+```text
+you> 跑一下 practice/cart 的测试，挂了就修好。
+```
+
+接下来它自己走了十几轮。这里只列它调了什么、拿到了什么，完整输出不贴：
+
+```text
+bash        npm test                → Missing script: "test"
+bash        npm run                 → 只列出了 code 自己的 dev 脚本
+bash        find . -type f ...      → 看见 src/ 和 test/
+read_file   practice/cart           → EISDIR，这是个目录
+read_file   .../package.json        → ENOENT，这个文件不存在
+bash        ls -la practice/cart/
+read_file   .../README.md           → 知道该用 node --test
+bash        node --test             → exit 1，ERR_MODULE_NOT_FOUND: src/format.js
+read_file   test/cart.test.js
+read_file   src/cart.js
+write_file  src/format.js           → 按测试的断言实现 formatPrice
+bash        node --test             → exit 1，3 个测试 2 过 1 挂，TypeError
+edit_file   src/cart.js             → 给 reduce 补上初始值 0
+bash        node --test             → exit 0，3 个全过
+```
+
+当然，不同的模型可能调用的顺序和数量不一样，但这已经足够证明，当前的 agent 已经具备了读写文件，使用工具直到任务完成的能力。它在一个陌生目录里从最常见的约定开始猜——先试 `npm test`，再看有哪些脚本，都扑空之后才转头去看这里究竟有什么文件。
+
+有值得注意的地方：`read_file` 读到目录、读到不存在的文件，两次都抛了异常，但上一章我们把工具异常编码成带 `is_error` 的 `tool_result` 回传，所以 loop 一次都没有停——模型看了一眼错误信息，换成 `ls -la`，继续往下走。我们没有为"工具失败了怎么办"写任何恢复逻辑，它自己绕过去了。
+`edit_file` 那次调用：模型交回来的 `old_string` 是整个 `cartTotal` 函数体，而不是 `.reduce(...)` 那一行。工具描述里要求 `old_string` 必须唯一，它就自己往外扩了上下文。这个约束没有写进任何一个代码分支，它是靠工具描述生效的。
+在这一次任务里，agent 摸清了一个陌生目录、从两次工具报错里恢复、新建了一个文件、精确改了另一个文件，最后用测试的退出码判断自己做完了没有。
+`grep` 这次一次都没用上，模型更顺手的是 `bash` 里的 `find` 和 `ls`。工具集里有冗余不是坏事，这说明我们写下的工具描述和模型的实际习惯之间可能存在落差。
+
+agent 会真的改动 `practice/cart/`。想再跑一次，先复位：
+
+```bash
+git checkout -- code/practice/cart && git clean -fd code/practice/cart
+```
+
+## 最小 coding agent 的边界
+
+到这里，我们的 agent 已经可以在本地环境写代码并进行测试了，但是鉴于我们前文开发过程中的体验和遇到的问题，它仍然不是一个安全可靠的工具：
+- 没有 system prompt 告诉它 cwd、Git 状态和项目约定。
+- 写文件和执行命令前不会询问。
+- agent loop 和 HTTP 细节仍然依赖我们手写的 wire types。
+
+这些限制没有阻止它修完刚才的 bug，我们已经通过裸 fetch 摸清了 request、tool use 和 loop；继续往后加入更多响应分支，只会开始维护一份不完整的 SDK。下一章中会进行改变。
+
+<ChapterMilestone
+  added={[
+    {
+      path: 'practice/cart/',
+      items: [
+        { name: 'test/cart.test.js', note: '三条断言就是规格，其中一条引用了还不存在的模块' },
+        { name: 'src/cart.js', note: '空数组挡不住，reduce 没有初始值会抛错' },
+      ],
+    },
+  ]}
+  changed={[
+    {
+      path: 'src/tools.ts',
+      items: [
+        { name: 'write_file / writeFileTool()', note: '整份写入，成功时返回写了多少字节' },
+        { name: 'edit_file / editFileTool()', note: '唯一精确替换；空串、无变化、找不到、命中多处一律拒绝' },
+        { name: 'grep / grepTool()', note: 'execFile 逐项传参，退出码 1 当作“没找到”而不是执行失败' },
+        { name: 'bash / bashTool()', note: 'exec 跑任意命令，退出码、stdout、stderr 原样交回模型' },
+        { name: 'stringField()', note: '从 unknown 的入参里收窄出字符串' },
+        { name: 'formatCommandResult()', note: '统一子进程结果的文本格式' },
+        { name: 'tools', note: '改成 Tool[]，工具定义和执行函数放进同一个对象' },
+      ],
+    },
+    {
+      path: 'src/types.ts',
+      items: [
+        { name: 'ProcessError', note: '子进程错误上挂着的 code、stdout 和 stderr' },
+        { name: 'ToolDefinition / Tool', note: '把发给模型的声明和本地执行绑在一起' },
+      ],
+    },
+    {
+      path: 'src/agent.ts',
+      items: [
+        { name: 'callModel()', note: '请求体只发 tools 里的 definition' },
+        { name: '工具派发', note: '按名字找到 Tool 后直接 execute()，不再维护第二份分支表' },
+      ],
+    },
+  ]}
+  summary="现在它能建文件、改文件、搜代码、跑命令，并且用测试的退出码判断任务完成没有——一次任务里它自己摸清了陌生目录、从两次工具报错里恢复、改完再验证，而 loop 一行都没动。但它还不知道自己在哪个项目里，写文件和执行命令前也不会问你一句。"
+/>
