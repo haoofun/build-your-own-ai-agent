@@ -46,7 +46,7 @@ end_turn → 退出循环
 
 客户端不再提前规定任务需要几次调用，而是根据模型每一轮的 stop_reason 决定继续还是停止。
 
-## 实现 agent loop
+## 对话历史移出 REPL 循环
 
 上一章中，函数 answerOnce() 做了很多事情，它直接处理用户输入、拼接 message、调用模型、读取 tool_use 以及执行本地工具并向模型返回执行结果。接下来我们需要将该函数中不同的职责拆解出来，让 cli.ts 负责人与程序之间的交互，也就是处理用户输入输出以及向请求中追加 user message；将工具往返变成可以重复执行的 agent loop 放在 agent.ts 中。
 
@@ -97,6 +97,8 @@ rl.close()
 ```
 
 这里 cli.ts 只留下了启动检查和那行 banner 里用到的 MODEL，真正发请求所需要的 API_URL、API_KEY 都会跟着 callModel() 一起搬到 agent.ts。两个文件各留一份 MODEL 常量是暂时的重复，等后面引入配置模块时再收拢。
+
+## agent.ts 接管模型调用和工具派发
 
 创建 `src/agent.ts`，在实现 runAgent() 之前，我们先从原先的 cli.ts 中迁移部分 helper 函数过来：
 
@@ -184,6 +186,8 @@ export async function runTool(name: string, input: unknown): Promise<string> {
 ```
 
 现在只有一个工具，这层封装看起来还很薄。但本章马上会加入 read_file：到时只需要在 tools.ts 中增加一个分支，runAgent() 不需要跟着认识新的本地函数。
+
+## 实现 runAgent()
 
 实现 runAgent() ：
 
@@ -282,6 +286,8 @@ filter() 收集这一轮的全部 tool_use，避免像上一章的 find() 一样
 → 直到模型返回 end_turn
 ```
 
+## 先查上海，再查纽约
+
 我们再次运行程序：
 
 ```text
@@ -312,7 +318,7 @@ claude> 好的，查询结果如下：
 
 不过，我们目前证明的只是“同一个时间工具可以连续调用多次”。第一章让模型 review 本地文件的请求依然做不到，模型还是看不到这些文件。接下来，我们给这个 loop 加入第二个工具：read_file。
 
-## 加入 `read_file`
+## 声明第二个工具 read_file
 
 先在 `src/tools.ts` 的 `tools` 中加入新的工具定义：
 
@@ -340,7 +346,7 @@ get_current_time
 read_file
 ```
 
-## 实现 `read_file`
+## 实现 read_file
 
 在 `src/tools.ts` 顶部导入 Node.js 自带的文件 API：
 
@@ -377,6 +383,8 @@ export async function runTool(name: string, input: unknown): Promise<string> {
   throw new Error(`unknown tool: ${name}`)
 }
 ```
+
+## 它猜了一个路径
 
 尝试使用一下工具 `read_file` ：
 
@@ -430,6 +438,8 @@ Node.js v24.11.1
   },
 },
 ```
+
+## 工具失败不该让进程退出
 
 然后给 ToolResultBlock 类型加上一个可选的标志位，用来显式地告诉模型这是工具报错。如果不写 `is_error: true`，API 本身通常仍然接受原先的协议结构，只是这条结果会被当成一次正常的工具返回，模型只能靠 "ENOENT..." 这段文字自己判断它是不是错误：
 
@@ -531,6 +541,8 @@ claude> 根据这两个文件，这是一个基于Claude AI的CLI应用。以下
 ```
 
 上面的输出我们手动省略了部分内容。可以看到，模型在同一轮里调用了两次工具，拿到两个结果后才给出结论。
+
+## 它只能读，不能写
 
 下一章，我们继续给它加入行动能力。
 

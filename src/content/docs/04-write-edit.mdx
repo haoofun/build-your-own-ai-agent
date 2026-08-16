@@ -13,7 +13,7 @@ import ChapterMilestone from '../../components/ChapterMilestone'
 - `grep` 在不知道文件名时搜索代码。
 - `bash` 运行测试和其他 shell 命令。
 
-## 新增工具定义
+## 定义 write_file、edit_file、grep、bash
 
 修改 `src/tools.ts`，把四份定义追加到 `tools` 数组。
 
@@ -97,7 +97,7 @@ import ChapterMilestone from '../../components/ChapterMilestone'
 `grep` 用来帮助模型搜索文件路径，在上一章中，如果模型在调用 `read_file` 没有得到期望的结果，`grep` 可以帮它准确的定位文件路径，得到正确的参数后重新调用工具。
 `bash` 用来执行命令，工具定义描述中最后一句描述很重要，"Each call starts a new shell."，这代表每次 `bash` 调用都会启动新的 shell，每次执行命令的环境都是独立的。
 
-## 新增工具函数
+## 实现 write_file 和 edit_file
 
 新增一个 helper 函数 `stringField()` 提取出工具函数中校验字符串参数的代码
 
@@ -198,6 +198,8 @@ export async function editFileTool(input: unknown): Promise<string> {
 ```ts
 content.replace(oldString, () => newString)
 ```
+
+## 用子进程实现 grep 和 bash
 
 在实现 `bash` 和 `grep` 工具时，我们需要使用到 Node 提供的 node:child_process 模块其中的 exec() 和 execFile() 函数。
 
@@ -342,7 +344,7 @@ export async function bashTool(input: unknown): Promise<string> {
 现在没有权限确认，也没有 sandbox。只在你愿意让它读写和执行命令的练习目录中运行，不要把它指向重要仓库。
 </Callout>
 
-## 更新派发函数
+## 把定义和实现放在一起
 
 我们已经有了工具定义和工具函数实现，接下来需要修改 runTool()，加一个工具时，定义和派发必须同时修改，本章一共新增了四个工具，同一份对应关系在两个位置维护，这是完全的负担，我们可以把定义和实现放在一起。
 

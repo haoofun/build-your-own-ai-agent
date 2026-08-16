@@ -289,7 +289,7 @@ export function getCurrentTime(input: unknown): string {
 这里使用 JavaScript 内置的 Intl.DateTimeFormat 来处理时区和时间格式。
 new Date() 获取当前时间；timeZone: args.time_zone 指定模型传入的目标时区，例如 Asia/Shanghai；最后调用 .format()，把时间转换成适合直接返回给模型的字符串。
 
-## 定义 message api 的部分 type
+## 先把用到的消息结构写成类型
 
 前面我们已经看过一次 Messages API 返回 `tool_use` 时的 JSON 结构。
 
@@ -547,7 +547,7 @@ while (true) {
 }
 ```
 
-## 验证结果
+## 问它上海现在几点
 
 查询一个真实时间：
 
