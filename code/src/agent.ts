@@ -23,7 +23,7 @@ async function callModel(messages: MessageParam[]): Promise<Message> {
       model: MODEL,
       max_tokens: 1024,
       messages,
-      tools,
+      tools: tools.map((tool) => tool.definition),
       tool_choice: {
         type: 'auto',
         disable_parallel_tool_use: false,
@@ -98,8 +98,17 @@ export async function runAgent(messages: MessageParam[]): Promise<void> {
 
       let toolResult: ToolResultBlock
 
+      const tool = tools.find(
+        (candidate) =>
+          candidate.definition.name === toolUse.name,
+      )
+
+      if (!tool) {
+        throw new Error(`unknown tool: ${toolUse.name}`)
+      }
+
       try {
-        const output = await runTool(toolUse.name, toolUse.input)
+        const output = await tool.execute(toolUse.input)
 
         console.log(`tool_result> ${output}`)
 

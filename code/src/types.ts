@@ -38,3 +38,27 @@ export type Message = {
     output_tokens: number
   }
 }
+
+export type ProcessError = Error & {
+  code?: number | string
+  stdout?: string
+  stderr?: string
+}
+
+export type ToolDefinition = {
+  name: string
+  description: string
+  input_schema: {
+    type: 'object'
+    properties: Record<string, {
+      type: 'string'
+      description: string
+    }>
+    required: string[]
+  }
+}
+
+export type Tool = {
+  definition: ToolDefinition
+  execute(input: unknown): string | Promise<string>
+}
