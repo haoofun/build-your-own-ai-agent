@@ -303,15 +303,3 @@ export async function bashTool(input: unknown): Promise<string> {
     )
   }
 }
-
-export async function runTool(name: string, input: unknown): Promise<string> {
-  if (name === 'get_current_time') {
-    return getCurrentTime(input)
-  }
-
-  if (name === 'read_file') {
-    return await readFileTool(input)
-  }
-
-  throw new Error(`unknown tool: ${name}`)
-}

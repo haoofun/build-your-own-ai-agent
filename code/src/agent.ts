@@ -5,7 +5,7 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from './types.js'
-import { runTool, tools } from './tools.js'
+import { tools } from './tools.js'
 
 const API_URL = 'https://api.anthropic.com/v1/messages'
 const MODEL = 'claude-haiku-4-5'
