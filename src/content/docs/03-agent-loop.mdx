@@ -167,7 +167,7 @@ function printMessage(message: Message): void {
 
 这些代码和上一章有一点变化，我们把 disable_parallel_tool_use 置为 false，现在 Claude 可以在一次响应里返回多个 tool_use block，实际上也可以直接不写这个字段，因为 Anthropic 当前默认允许 parallel tool use。怎么把它们全部执行掉，留到 runAgent() 里解决。
 
-import 里的 ToolResultBlock 和 runTool 现在还没用上，它们属于马上要写的 runAgent()，先一起写好。
+`import` 里的 ToolResultBlock 和 runTool 现在还没用上，它们属于马上要写的 runAgent()，先一起写好。
 
 把原来函数 answerOnce() 中调用工具的能力提取出来封装到 tools.ts 中，根据工具名和输入来调用工具，返回对应的结果，这层映射属于工具模块，而不是 agent loop。agent.ts 只需要知道“按这个名字执行工具”，不应该知道每个工具分别由哪个本地函数实现。
 
